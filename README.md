@@ -59,3 +59,9 @@ PATCH /conversations/{conversation_id}/state
 POST /conversations/{conversation_id}/messages
 GET /conversations/{conversation_id}/messages
 ```
+
+Endpoint do simulador:
+
+```text
+POST /simulator/messages
+```
