@@ -1,0 +1,1 @@
+"""Falange MVP application package."""
