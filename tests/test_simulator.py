@@ -5,8 +5,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.catalog import format_catalog
 from app.core.database import Base, get_db
 from app.main import app
+
+_CATALOG_REPLY = (
+    f"Posso te ajudar com o pedido. No momento temos: {format_catalog()}."
+)
 
 
 @pytest.fixture()
@@ -85,6 +90,47 @@ def test_simulator_persists_inbound_and_outbound_messages(client: TestClient) ->
     assert messages_response.status_code == 200
     assert len(messages) == 2
     assert {message["direction"] for message in messages} == {"inbound", "outbound"}
+
+
+def test_simulator_shows_catalog_for_generic_pizza_request(client: TestClient) -> None:
+    response = client.post(
+        "/simulator/messages",
+        json={
+            "external_id": "simulator-user-generic-pizza",
+            "message": "Quero pizza",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "collecting_order"
+    assert response.json()["intent"] == "fallback"
+    assert response.json()["reply"] == _CATALOG_REPLY
+
+
+def test_simulator_shows_catalog_for_generic_pizza_request_while_collecting_address(
+    client: TestClient,
+) -> None:
+    external_id = "simulator-user-address-then-generic-pizza"
+    client.post(
+        "/simulator/messages",
+        json={
+            "external_id": external_id,
+            "message": "Quero uma pizza grande de calabresa",
+        },
+    )
+
+    response = client.post(
+        "/simulator/messages",
+        json={
+            "external_id": external_id,
+            "message": "Quero pizza",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "collecting_order"
+    assert response.json()["intent"] == "fallback"
+    assert response.json()["reply"] == _CATALOG_REPLY
 
 
 def test_simulator_handoff_request_updates_state(client: TestClient) -> None:

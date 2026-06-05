@@ -3,7 +3,15 @@ from unicodedata import normalize
 
 from sqlalchemy.orm import Session
 
-from app.catalog import find_catalog_item, format_catalog
+from app.catalog import (
+    CatalogMatch,
+    find_catalog_item,
+    format_catalog,
+    format_order_label,
+    format_size_prompt,
+    is_catalog_query,
+    needs_size_selection,
+)
 from app.helpers import conversation_helper
 
 
@@ -99,24 +107,56 @@ def _respond(current_state: str, message: str) -> _AgentDecision:
     )
 
 
-def _handle_order_collection(message: str) -> _AgentDecision:
-    item = find_catalog_item(message)
-    if item is None:
-        return _AgentDecision(
-            reply=f"Posso te ajudar com o pedido. No momento temos: {format_catalog()}.",
-            state="collecting_order",
-            intent="fallback",
-        )
-
+def _catalog_fallback() -> _AgentDecision:
     return _AgentDecision(
-        reply=f"Anotei: {item.name}. Informe o endereco completo de entrega.",
-        state="collecting_address",
-        intent="order",
-        order_summary=item.name,
+        reply=f"Posso te ajudar com o pedido. No momento temos: {format_catalog()}.",
+        state="collecting_order",
+        intent="fallback",
     )
 
 
+def _order_from_match(match: CatalogMatch) -> _AgentDecision:
+    label = format_order_label(match)
+    return _AgentDecision(
+        reply=f"Anotei: {label}. Informe o endereco completo de entrega.",
+        state="collecting_address",
+        intent="order",
+        order_summary=label,
+    )
+
+
+def _handle_order_collection(message: str) -> _AgentDecision:
+    if is_catalog_query(message) and find_catalog_item(message) is None:
+        return _catalog_fallback()
+
+    match = find_catalog_item(message)
+    if match is None:
+        return _catalog_fallback()
+
+    if needs_size_selection(match):
+        return _AgentDecision(
+            reply=format_size_prompt(match.item),
+            state="collecting_order",
+            intent="order",
+        )
+
+    return _order_from_match(match)
+
+
 def _handle_address_collection(message: str) -> _AgentDecision:
+    match = find_catalog_item(message)
+    if match is not None:
+        if needs_size_selection(match):
+            return _AgentDecision(
+                reply=format_size_prompt(match.item),
+                state="collecting_order",
+                intent="order",
+            )
+        return _order_from_match(match)
+
+    if is_catalog_query(message):
+        return _catalog_fallback()
+
     if not _looks_like_address(message):
         return _AgentDecision(
             reply="Informe o endereco completo com rua e numero para entrega.",
