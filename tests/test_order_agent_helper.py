@@ -1,0 +1,40 @@
+from app.catalog import format_catalog
+from app.helpers.order_agent_helper import _respond
+
+_CATALOG_REPLY = (
+    f"Posso te ajudar com o pedido. No momento temos: {format_catalog()}."
+)
+
+
+def test_generic_pizza_request_shows_catalog_before_collecting_address() -> None:
+    response = _respond("collecting_order", "Quero pizza")
+
+    assert response.state == "collecting_order"
+    assert response.intent == "fallback"
+    assert response.reply == _CATALOG_REPLY
+
+
+def test_generic_pizza_request_during_address_collection_shows_catalog() -> None:
+    response = _respond("collecting_address", "Quero pizza")
+
+    assert response.state == "collecting_order"
+    assert response.intent == "fallback"
+    assert response.reply == _CATALOG_REPLY
+
+
+def test_specific_catalog_item_request_collects_address() -> None:
+    response = _respond("collecting_order", "Quero uma pizza grande de calabresa")
+
+    assert response.state == "collecting_address"
+    assert response.intent == "order"
+    assert response.reply == (
+        "Anotei: Pizza grande de calabresa. Informe o endereco completo de entrega."
+    )
+
+
+def test_catalog_item_without_size_asks_for_size() -> None:
+    response = _respond("collecting_order", "Quero calabresa")
+
+    assert response.state == "collecting_order"
+    assert response.intent == "order"
+    assert response.reply == "Qual tamanho da pizza de calabresa? Temos grande ou média."
