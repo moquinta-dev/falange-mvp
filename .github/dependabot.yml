@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Bahia
+    target-branch: develop
+    open-pull-requests-limit: 5
+    groups:
+      python-runtime:
+        patterns:
+          - "fastapi"
+          - "pydantic-settings"
+          - "sqlalchemy"
+          - "uvicorn"
+      python-tests:
+        patterns:
+          - "pytest"
+          - "httpx"
+    commit-message:
+      prefix: deps
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:30"
+      timezone: America/Bahia
+    target-branch: develop
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope

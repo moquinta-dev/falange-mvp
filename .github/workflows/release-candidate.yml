@@ -1,0 +1,136 @@
+name: Release Candidate
+
+on:
+  push:
+    branches:
+      - "release/**"
+  workflow_dispatch:
+    inputs:
+      rc-version:
+        description: "Release candidate version, for example v0.2.0-rc.1"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-rc:
+    name: validate-rc
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      rc-version: ${{ steps.version.outputs.rc-version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Resolve RC version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RC_VERSION: ${{ inputs.rc-version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            rc_version="$INPUT_RC_VERSION"
+          else
+            rc_version="${REF_NAME#release/}"
+          fi
+
+          if [[ ! "$rc_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "::error::Invalid RC version '$rc_version'. Expected vMAJOR.MINOR.PATCH-rc.N"
+            exit 1
+          fi
+
+          echo "rc-version=$rc_version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compile Python sources
+        run: |
+          find app tests -name "*.py" -print0 | xargs -0 python -m py_compile
+
+      - name: Run test suite
+        run: |
+          python -m pytest
+
+      - name: Validate compose configuration
+        run: |
+          docker compose config >/dev/null
+
+      - name: Build container image
+        run: |
+          docker build --pull --tag falange-mvp:${{ steps.version.outputs.rc-version }} .
+
+      - name: Create source artifact
+        env:
+          RC_VERSION: ${{ steps.version.outputs.rc-version }}
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="falange-mvp-${RC_VERSION}/" \
+            --output="dist/falange-mvp-${RC_VERSION}.tar.gz" HEAD
+
+      - name: Upload RC artifact
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: falange-mvp-${{ steps.version.outputs.rc-version }}
+          path: dist/falange-mvp-${{ steps.version.outputs.rc-version }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-github-prerelease:
+    name: publish-github-prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - validate-rc
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC_VERSION: ${{ needs.validate-rc.outputs.rc-version }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse "$RC_VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag already exists: $RC_VERSION"
+            exit 1
+          fi
+
+          git tag -a "$RC_VERSION" -m "Release candidate $RC_VERSION"
+          git push origin "$RC_VERSION"
+
+          gh release create "$RC_VERSION" \
+            --title "Falange MVP $RC_VERSION" \
+            --notes "Release candidate validated from $GITHUB_SHA." \
+            --prerelease \
+            --target "$GITHUB_SHA"

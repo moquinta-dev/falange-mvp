@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "release/**"
+      - "hotfix/**"
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+      - "hotfix/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitflow-policy:
+    name: gitflow-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate pull request branch policy
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Branch policy applies to pull requests only."
+            exit 0
+          fi
+
+          case "$BASE_REF" in
+            main)
+              allowed='^(release|hotfix)/.+$'
+              ;;
+            develop)
+              allowed='^(feature|bugfix|hotfix|release)/.+$'
+              ;;
+            release/*)
+              allowed='^(bugfix|hotfix)/.+$'
+              ;;
+            hotfix/*)
+              allowed='^hotfix/.+$'
+              ;;
+            *)
+              echo "::error::Unsupported target branch: $BASE_REF"
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "$HEAD_REF" =~ $allowed ]]; then
+            echo "::error::Branch '$HEAD_REF' cannot target '$BASE_REF'. Expected pattern: $allowed"
+            exit 1
+          fi
+
+  python-quality:
+    name: python-quality (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compile Python sources
+        run: |
+          find app tests -name "*.py" -print0 | xargs -0 python -m py_compile
+
+      - name: Run test suite
+        run: |
+          python -m pytest
+
+  docker-image:
+    name: docker-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Validate compose configuration
+        run: |
+          docker compose config >/dev/null
+
+      - name: Build container image
+        run: |
+          docker build --pull --tag falange-mvp:${{ github.sha }} .
+
+  required-ci:
+    name: required-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - gitflow-policy
+      - python-quality
+      - docker-image
+    if: always()
+    steps:
+      - name: Check required jobs
+        env:
+          GITFLOW_POLICY_RESULT: ${{ needs.gitflow-policy.result }}
+          PYTHON_QUALITY_RESULT: ${{ needs.python-quality.result }}
+          DOCKER_IMAGE_RESULT: ${{ needs.docker-image.result }}
+        run: |
+          set -euo pipefail
+
+          for result in "$GITFLOW_POLICY_RESULT" "$PYTHON_QUALITY_RESULT" "$DOCKER_IMAGE_RESULT"; do
+            if [ "$result" != "success" ]; then
+              echo "::error::At least one required CI job did not succeed."
+              exit 1
+            fi
+          done
+
+          echo "All required CI jobs succeeded."
