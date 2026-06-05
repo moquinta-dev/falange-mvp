@@ -8,6 +8,7 @@ Este repositorio usa `main` como branch protegida de producao, `develop` como in
 - `develop`: integra trabalho aprovado antes de estabilizacao.
 - `feature/*`: novas funcionalidades contra `develop`.
 - `bugfix/*`: correcoes contra `develop` ou `release/*`.
+- `chore/*` ou `chore-*`: governanca, automacao e manutencao contra `develop`.
 - `release/vMAJOR.MINOR.PATCH-rc.N`: estabilizacao de release candidate.
 - `hotfix/*`: correcao urgente baseada em `main`.
 

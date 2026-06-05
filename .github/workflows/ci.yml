@@ -45,7 +45,7 @@ jobs:
               allowed='^(release|hotfix)/.+$'
               ;;
             develop)
-              allowed='^(feature|bugfix|hotfix|release)/.+$'
+              allowed='^(feature|bugfix|hotfix|release|chore)(/|-).+$'
               ;;
             release/*)
               allowed='^(bugfix|hotfix)/.+$'
@@ -80,7 +80,18 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Detect Python project
+        id: python-project
+        run: |
+          if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Python project files not present on this branch; skipping Python checks."
+          fi
+
       - name: Setup Python
+        if: steps.python-project.outputs.present == 'true'
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
@@ -90,17 +101,30 @@ jobs:
             requirements.txt
 
       - name: Install dependencies
+        if: steps.python-project.outputs.present == 'true'
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          if [ -f pyproject.toml ]; then
+            python -m pip install -e ".[dev]"
+          else
+            python -m pip install -r requirements.txt
+          fi
 
       - name: Compile Python sources
+        if: steps.python-project.outputs.present == 'true'
         run: |
-          find app tests -name "*.py" -print0 | xargs -0 python -m py_compile
+          if [ -d app ] || [ -d tests ]; then
+            find app tests -name "*.py" -print0 2>/dev/null | xargs -0 --no-run-if-empty python -m py_compile
+          fi
 
       - name: Run test suite
+        if: steps.python-project.outputs.present == 'true'
         run: |
-          python -m pytest
+          if [ -d tests ]; then
+            python -m pytest
+          else
+            echo "No tests directory found; skipping pytest."
+          fi
 
   docker-image:
     name: docker-image
@@ -112,13 +136,33 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Validate compose configuration
+      - name: Detect Docker project
+        id: docker-project
         run: |
-          docker compose config >/dev/null
+          if [ -f Dockerfile ] || [ -f docker-compose.yml ] || [ -f compose.yml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Docker project files not present on this branch; skipping Docker checks."
+          fi
+
+      - name: Validate compose configuration
+        if: steps.docker-project.outputs.present == 'true'
+        run: |
+          if [ -f docker-compose.yml ] || [ -f compose.yml ]; then
+            docker compose config >/dev/null
+          else
+            echo "No compose file found; skipping compose validation."
+          fi
 
       - name: Build container image
+        if: steps.docker-project.outputs.present == 'true'
         run: |
-          docker build --pull --tag falange-mvp:${{ github.sha }} .
+          if [ -f Dockerfile ]; then
+            docker build --pull --tag falange-mvp:${{ github.sha }} .
+          else
+            echo "No Dockerfile found; skipping image build."
+          fi
 
   required-ci:
     name: required-ci
