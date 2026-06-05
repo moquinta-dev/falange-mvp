@@ -15,7 +15,7 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
-def create_or_get_conversation(
+async def create_or_get_conversation(
     payload: ConversationCreate,
     db: Session = Depends(get_db),
 ):
@@ -28,7 +28,7 @@ def create_or_get_conversation(
 
 
 @router.get("/{conversation_id}", response_model=ConversationResponse)
-def get_conversation(
+async def get_conversation(
     conversation_id: int,
     db: Session = Depends(get_db),
 ):
@@ -39,7 +39,7 @@ def get_conversation(
 
 
 @router.patch("/{conversation_id}/state", response_model=ConversationResponse)
-def update_conversation_state(
+async def update_conversation_state(
     conversation_id: int,
     payload: ConversationStateUpdate,
     db: Session = Depends(get_db),
@@ -60,7 +60,7 @@ def update_conversation_state(
     response_model=MessageResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def add_message(
+async def add_message(
     conversation_id: int,
     payload: MessageCreate,
     db: Session = Depends(get_db),
@@ -79,7 +79,7 @@ def add_message(
 
 
 @router.get("/{conversation_id}/messages", response_model=list[MessageResponse])
-def list_messages(
+async def list_messages(
     conversation_id: int,
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),

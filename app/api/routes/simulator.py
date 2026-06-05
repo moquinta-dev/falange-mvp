@@ -9,7 +9,7 @@ router = APIRouter(prefix="/simulator", tags=["simulator"])
 
 
 @router.post("/messages", response_model=SimulatorMessageResponse)
-def send_simulator_message(
+async def send_simulator_message(
     payload: SimulatorMessageRequest,
     db: Session = Depends(get_db),
 ):

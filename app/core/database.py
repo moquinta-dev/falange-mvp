@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -45,7 +45,7 @@ def init_database() -> None:
     Base.metadata.create_all(bind=engine)
 
 
-def get_db() -> Generator[Session, None, None]:
+async def get_db() -> AsyncGenerator[Session, None]:
     db = SessionLocal()
     try:
         yield db
