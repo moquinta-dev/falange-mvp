@@ -1,0 +1,226 @@
+name: Deploy Hostinger VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image-ref: ${{ steps.image.outputs.image-ref }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: python -m pytest
+
+      - name: Resolve image tags
+        id: image
+        env:
+          REGISTRY: ghcr.io
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          image_name="$(echo "$REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          image_ref="${REGISTRY}/${image_name}:${SHA}"
+          latest_ref="${REGISTRY}/${image_name}:latest"
+
+          echo "image-ref=$image_ref" >> "$GITHUB_OUTPUT"
+          echo "latest-ref=$latest_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USERNAME: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+      - name: Build image
+        run: |
+          docker build \
+            --pull \
+            --tag "${{ steps.image.outputs.image-ref }}" \
+            --tag "${{ steps.image.outputs.latest-ref }}" \
+            .
+
+      - name: Push image
+        run: |
+          docker push "${{ steps.image.outputs.image-ref }}"
+          docker push "${{ steps.image.outputs.latest-ref }}"
+
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - build-and-push
+    environment:
+      name: production
+    steps:
+      - name: Checkout deployment files
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Validate deployment secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_APP_DOMAIN: ${{ secrets.VPS_APP_DOMAIN }}
+        run: |
+          set -euo pipefail
+
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DOMAIN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required deployment secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Configure SSH
+        id: ssh
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          set -euo pipefail
+
+          port="${VPS_PORT:-22}"
+          app_dir="${VPS_APP_DIR:-/opt/falange-mvp}"
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/hostinger_deploy"
+          chmod 600 "$HOME/.ssh/hostinger_deploy"
+          ssh-keyscan -p "$port" "$VPS_HOST" >> "$HOME/.ssh/known_hosts"
+
+          echo "port=$port" >> "$GITHUB_OUTPUT"
+          echo "app-dir=$app_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare remote directory
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_DIR: ${{ steps.ssh.outputs.app-dir }}
+          VPS_PORT: ${{ steps.ssh.outputs.port }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/hostinger_deploy" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "mkdir -p '$VPS_APP_DIR/data'"
+
+      - name: Upload deployment files
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_DIR: ${{ steps.ssh.outputs.app-dir }}
+          VPS_PORT: ${{ steps.ssh.outputs.port }}
+          VPS_APP_DOMAIN: ${{ secrets.VPS_APP_DOMAIN }}
+          FALANGE_IMAGE: ${{ needs.build-and-push.outputs.image-ref }}
+        run: |
+          set -euo pipefail
+
+          deploy_env="$(mktemp)"
+          {
+            printf 'FALANGE_IMAGE=%s\n' "$FALANGE_IMAGE"
+            printf 'APP_DOMAIN=%s\n' "$VPS_APP_DOMAIN"
+          } > "$deploy_env"
+
+          scp -i "$HOME/.ssh/hostinger_deploy" -P "$VPS_PORT" \
+            deploy/hostinger/docker-compose.yml \
+            deploy/hostinger/Caddyfile \
+            "$deploy_env" \
+            "$VPS_USER@$VPS_HOST:$VPS_APP_DIR/"
+
+          ssh -i "$HOME/.ssh/hostinger_deploy" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "mv '$VPS_APP_DIR/$(basename "$deploy_env")' '$VPS_APP_DIR/.env.deploy'"
+
+      - name: Deploy on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_DIR: ${{ steps.ssh.outputs.app-dir }}
+          VPS_PORT: ${{ steps.ssh.outputs.port }}
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USERNAME: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$GHCR_TOKEN" | ssh -i "$HOME/.ssh/hostinger_deploy" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
+
+          ssh -i "$HOME/.ssh/hostinger_deploy" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "APP_DIR='$VPS_APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          cd "$APP_DIR"
+
+          if [ ! -f .env ]; then
+            cat > .env <<'EOF'
+          APP_NAME=falange-mvp
+          APP_ENV=production
+          APP_VERSION=0.1.0
+          APP_DEBUG=false
+          DATABASE_URL=sqlite:////data/falange.db
+          EOF
+            chmod 600 .env
+          fi
+
+          docker compose --env-file .env.deploy -f docker-compose.yml pull
+          docker compose --env-file .env.deploy -f docker-compose.yml up -d --remove-orphans
+          docker image prune -f
+          REMOTE
+
+      - name: Verify public health endpoint
+        env:
+          VPS_APP_DOMAIN: ${{ secrets.VPS_APP_DOMAIN }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error "https://${VPS_APP_DOMAIN}/health"; then
+              echo
+              echo "Deployment health check succeeded."
+              exit 0
+            fi
+
+            echo "Health check attempt ${attempt} failed; retrying in 10 seconds."
+            sleep 10
+          done
+
+          echo "::error::Deployment health check failed."
+          exit 1
