@@ -1,0 +1,233 @@
+name: Infra Hostinger VPS
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "deploy/hostinger/**"
+      - ".github/workflows/infra-hostinger-vps.yml"
+
+  push:
+    branches:
+      - "feature/hostinger"
+      - "feature/hostinger-*"
+      - "feature/hostinger/**"
+    paths:
+      - "deploy/hostinger/**"
+      - ".github/workflows/infra-hostinger-vps.yml"
+
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: "Infra stack to run"
+        required: true
+        type: choice
+        options:
+          - hostinger
+        default: hostinger
+      check_mode:
+        description: "Run Ansible in check mode"
+        required: true
+        type: boolean
+        default: true
+      configure_ufw:
+        description: "Allow SSH, HTTP, and HTTPS with ufw"
+        required: true
+        type: boolean
+        default: false
+      tags:
+        description: "Optional Ansible tags, comma-separated"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.stack || github.ref }}
+  cancel-in-progress: false
+
+env:
+  STACK_NAME: hostinger
+  STACK_PATH: deploy/hostinger
+  ANSIBLE_PLAYBOOK: deploy/hostinger/ansible/setup-vps.yml
+  ANSIBLE_EXAMPLE_INVENTORY: deploy/hostinger/ansible/inventory.example.ini
+
+jobs:
+  validate:
+    name: validate-hostinger-infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Ansible tools
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install ansible-core ansible-lint
+
+      - name: Validate workflow stack input
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          STACK_INPUT: ${{ inputs.stack }}
+        run: |
+          set -euo pipefail
+
+          if [ "$STACK_INPUT" != "$STACK_NAME" ]; then
+            echo "::error::Unsupported stack: $STACK_INPUT"
+            exit 1
+          fi
+
+      - name: Validate Ansible YAML syntax
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          for path in Path("deploy/hostinger/ansible").glob("*.yml"):
+              yaml.safe_load(path.read_text())
+
+          print("Ansible YAML syntax OK")
+          PY
+
+      - name: Run Ansible syntax check
+        run: |
+          set -euo pipefail
+          ansible-playbook \
+            -i "$ANSIBLE_EXAMPLE_INVENTORY" \
+            "$ANSIBLE_PLAYBOOK" \
+            --syntax-check
+
+      - name: Run ansible-lint
+        run: |
+          set -euo pipefail
+          ansible-lint "$ANSIBLE_PLAYBOOK"
+
+  apply:
+    name: apply-hostinger-infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - validate
+    if: github.event_name == 'workflow_dispatch'
+    environment:
+      name: infra-production
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Ansible
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install ansible-core
+
+      - name: Validate infrastructure secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required infrastructure secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Configure SSH key and known hosts
+        id: ssh
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          set -euo pipefail
+
+          port="${VPS_PORT:-22}"
+          app_dir="${VPS_APP_DIR:-/opt/falange-mvp}"
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/hostinger_infra"
+          chmod 600 "$HOME/.ssh/hostinger_infra"
+          ssh-keyscan -p "$port" "$VPS_HOST" >> "$HOME/.ssh/known_hosts"
+
+          echo "port=$port" >> "$GITHUB_OUTPUT"
+          echo "app-dir=$app_dir" >> "$GITHUB_OUTPUT"
+          echo "key-path=$HOME/.ssh/hostinger_infra" >> "$GITHUB_OUTPUT"
+
+      - name: Build Ansible inventory
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ steps.ssh.outputs.port }}
+          VPS_APP_DIR: ${{ steps.ssh.outputs.app-dir }}
+          VPS_KEY_PATH: ${{ steps.ssh.outputs.key-path }}
+          CONFIGURE_UFW: ${{ inputs.configure_ufw }}
+        run: |
+          set -euo pipefail
+
+          inventory="$RUNNER_TEMP/hostinger-inventory.ini"
+          {
+            printf '[hostinger_vps]\n'
+            printf 'hostinger-vps ansible_host=%s ansible_user=%s ansible_port=%s ansible_ssh_private_key_file=%s\n' \
+              "$VPS_HOST" "$VPS_USER" "$VPS_PORT" "$VPS_KEY_PATH"
+            printf '\n[hostinger_vps:vars]\n'
+            printf 'vps_app_dir=%s\n' "$VPS_APP_DIR"
+            printf 'vps_deploy_user=%s\n' "$VPS_USER"
+            printf 'configure_ufw=%s\n' "$CONFIGURE_UFW"
+            printf 'ssh_port=%s\n' "$VPS_PORT"
+          } > "$inventory"
+
+          echo "ANSIBLE_INVENTORY=$inventory" >> "$GITHUB_ENV"
+
+      - name: Run Ansible playbook
+        env:
+          CHECK_MODE: ${{ inputs.check_mode }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          set -euo pipefail
+
+          args=(-i "$ANSIBLE_INVENTORY" "$ANSIBLE_PLAYBOOK")
+
+          if [ "$CHECK_MODE" = "true" ]; then
+            args+=(--check --diff)
+          fi
+
+          if [ -n "$TAGS" ]; then
+            if [[ ! "$TAGS" =~ ^[A-Za-z0-9_,:-]+$ ]]; then
+              echo "::error::Invalid Ansible tags input."
+              exit 1
+            fi
+            args+=(--tags "$TAGS")
+          fi
+
+          ansible-playbook "${args[@]}"
