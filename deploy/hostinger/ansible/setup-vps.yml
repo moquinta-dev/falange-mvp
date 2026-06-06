@@ -1,0 +1,209 @@
+---
+# Playbook: setup-vps.yml
+# Description: Bootstrap Ubuntu Hostinger VPS for Falange MVP Docker Compose deploy.
+# Requirements:
+#   - Ansible 2.10+
+#   - Ubuntu target reachable over SSH
+# Variables:
+#   - vps_app_dir: Remote application directory (optional, default: /opt/falange-mvp)
+#   - vps_deploy_user: SSH/deploy user to add to docker group (optional, default: ansible_user)
+#   - configure_ufw: Configure and enable ufw for SSH/HTTP/HTTPS (optional, default: false)
+#   - ssh_port: SSH port to allow when configure_ufw=true (optional, default: ansible_port or 22)
+# Usage:
+#   ansible-playbook -i inventory.ini setup-vps.yml
+
+- name: Bootstrap Hostinger VPS for Falange MVP
+  hosts: hostinger_vps
+  become: true
+  gather_facts: true
+
+  vars:
+    app_dir: "{{ vps_app_dir | default('/opt/falange-mvp') }}"
+    app_data_dir: "{{ app_dir }}/data"
+    docker_install_script_url: https://get.docker.com
+    docker_install_script_path: /tmp/get-docker.sh
+    docker_deploy_user: "{{ vps_deploy_user | default(ansible_user | default(ansible_user_id)) }}"
+    firewall_enabled: "{{ configure_ufw | default(false) | bool }}"
+    firewall_ssh_port: "{{ ssh_port | default(ansible_port | default(22)) }}"
+
+  pre_tasks:
+    - name: Validate Ubuntu target
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+        fail_msg: "This bootstrap playbook is intended for Ubuntu VPS hosts."
+        success_msg: "Ubuntu target validated."
+      tags:
+        - always
+
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      tags:
+        - packages
+
+  tasks:
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+      tags:
+        - packages
+
+    - name: Check whether Docker is already installed
+      ansible.builtin.stat:
+        path: /usr/bin/docker
+      register: docker_binary
+      tags:
+        - docker
+
+    - name: Download Docker convenience installer
+      ansible.builtin.get_url:
+        url: "{{ docker_install_script_url }}"
+        dest: "{{ docker_install_script_path }}"
+        mode: '0755'
+      when: not docker_binary.stat.exists
+      tags:
+        - docker
+
+    - name: Install Docker Engine and Compose plugin
+      ansible.builtin.command:
+        cmd: "sh {{ docker_install_script_path }}"
+        creates: /usr/bin/docker
+      when: not docker_binary.stat.exists
+      tags:
+        - docker
+
+    - name: Ensure Docker service is enabled and running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+      tags:
+        - docker
+
+    - name: Verify Docker Compose plugin is available
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: docker_compose_version
+      changed_when: false
+      when: not ansible_check_mode
+      tags:
+        - docker
+        - verify
+
+    - name: Add deploy user to docker group
+      ansible.builtin.user:
+        name: "{{ docker_deploy_user }}"
+        groups:
+          - docker
+        append: true
+      tags:
+        - users
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ docker_deploy_user }}"
+        group: docker
+        mode: '0755'
+      tags:
+        - app
+
+    - name: Create application data directory
+      ansible.builtin.file:
+        path: "{{ app_data_dir }}"
+        state: directory
+        owner: "{{ docker_deploy_user }}"
+        group: docker
+        mode: '0750'
+      tags:
+        - app
+
+    - name: Install ufw when firewall management is enabled
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+      when: firewall_enabled
+      tags:
+        - firewall
+
+    - name: Allow SSH through ufw
+      ansible.builtin.command:
+        cmd: "ufw allow {{ firewall_ssh_port }}/tcp"
+      register: ufw_allow_ssh
+      changed_when: "'Rules updated' in ufw_allow_ssh.stdout"
+      when:
+        - firewall_enabled
+        - not ansible_check_mode
+      tags:
+        - firewall
+
+    - name: Allow HTTP through ufw
+      ansible.builtin.command:
+        cmd: ufw allow 80/tcp
+      register: ufw_allow_http
+      changed_when: "'Rules updated' in ufw_allow_http.stdout"
+      when:
+        - firewall_enabled
+        - not ansible_check_mode
+      tags:
+        - firewall
+
+    - name: Allow HTTPS through ufw
+      ansible.builtin.command:
+        cmd: ufw allow 443/tcp
+      register: ufw_allow_https
+      changed_when: "'Rules updated' in ufw_allow_https.stdout"
+      when:
+        - firewall_enabled
+        - not ansible_check_mode
+      tags:
+        - firewall
+
+    - name: Check ufw status
+      ansible.builtin.command:
+        cmd: ufw status
+      register: ufw_status
+      changed_when: false
+      when:
+        - firewall_enabled
+        - not ansible_check_mode
+      tags:
+        - firewall
+
+    - name: Enable ufw
+      ansible.builtin.command:
+        cmd: ufw --force enable
+      register: ufw_enable
+      changed_when: "'inactive' in ufw_status.stdout"
+      when:
+        - firewall_enabled
+        - not ansible_check_mode
+        - "'inactive' in ufw_status.stdout"
+      tags:
+        - firewall
+
+  post_tasks:
+    - name: Verify Docker service status
+      ansible.builtin.command:
+        cmd: docker info
+      register: docker_info
+      changed_when: false
+      when: not ansible_check_mode
+      tags:
+        - verify
+
+    - name: Show bootstrap completion note
+      ansible.builtin.debug:
+        msg:
+          - "Docker Compose: {{ docker_compose_version.stdout | default('not checked in check mode') }}"
+          - "Application directory: {{ app_dir }}"
+          - "Deploy user '{{ docker_deploy_user }}' is in the docker group."
+          - "Reconnect SSH before running docker commands as '{{ docker_deploy_user }}'."
+      tags:
+        - verify

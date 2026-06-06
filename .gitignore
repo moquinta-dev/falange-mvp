@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 *.egg-info/
 data/
+deploy/hostinger/ansible/inventory.ini
