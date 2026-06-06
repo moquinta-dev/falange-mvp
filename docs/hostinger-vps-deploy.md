@@ -72,7 +72,7 @@ via `workflow_dispatch`, escolhendo:
 - `check_mode=false` para aplicar mudancas;
 - `configure_ufw=true` apenas quando a porta SSH estiver confirmada.
 
-Use o environment `infra-production` para proteger execucoes reais com aprovacao
+Use o environment `production` para proteger execucoes reais com aprovacao
 manual. Os secrets necessarios para o workflow de infraestrutura sao:
 
 ```text

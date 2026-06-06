@@ -126,7 +126,7 @@ jobs:
       - validate
     if: github.event_name == 'workflow_dispatch'
     environment:
-      name: infra-production
+      name: production
     permissions:
       contents: read
     steps:
