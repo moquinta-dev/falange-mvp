@@ -72,7 +72,7 @@ via `workflow_dispatch`, escolhendo:
 - `check_mode=false` para aplicar mudancas;
 - `configure_ufw=true` apenas quando a porta SSH estiver confirmada.
 
-Use o environment `infra-production` para proteger execucoes reais com aprovacao
+Use o environment `production` para proteger execucoes reais com aprovacao
 manual. Os secrets necessarios para o workflow de infraestrutura sao:
 
 ```text
@@ -136,6 +136,30 @@ Quando a integracao Meta estiver pronta, incluir os secrets do provedor nesse me
 4. O workflow copia `deploy/hostinger/docker-compose.yml` e `deploy/hostinger/Caddyfile` para a VPS.
 5. A VPS faz pull da imagem e executa `docker compose up -d`.
 6. O pipeline valida `https://<VPS_APP_DOMAIN>/health`.
+
+## Troubleshooting TLS no Caddy
+
+O Caddy gerencia automaticamente os desafios ACME quando `APP_DOMAIN` contem apenas o
+dominio publico, sem `http://` ou `https://`. Nao crie uma rota manual que responda
+`OK` para `/.well-known/acme-challenge/*`: o Let's Encrypt espera o token ACME exato,
+e uma resposta fixa quebra a validacao.
+
+Este deploy desabilita o desafio `tls-alpn-01` e deixa a emissao em `http-01`, que
+exige que a porta 80 publica chegue diretamente ao container Caddy. Depois de alterar
+`deploy/hostinger/Caddyfile`, publique novamente pelo workflow ou rode na VPS:
+
+```bash
+cd /opt/falange-mvp
+docker compose --env-file .env.deploy -f docker-compose.yml restart caddy
+docker compose --env-file .env.deploy -f docker-compose.yml logs --tail=100 caddy
+```
+
+Para validar o caminho publico:
+
+```bash
+curl -I "http://<VPS_APP_DOMAIN>/health"
+curl -I "https://<VPS_APP_DOMAIN>/health"
+```
 
 ## Rollback manual
 

@@ -5,5 +5,11 @@
 		-Server
 	}
 
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+
 	reverse_proxy api:8000
 }
