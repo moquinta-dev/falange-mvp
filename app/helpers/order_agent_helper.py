@@ -30,6 +30,7 @@ def handle_message(
     external_id: str,
     message: str,
     channel: str = "simulator",
+    external_message_id: str | None = None,
 ) -> OrderAgentResult:
     conversation = conversation_helper.get_or_create_conversation(
         db,
@@ -42,6 +43,7 @@ def handle_message(
         conversation=conversation,
         direction="inbound",
         content=message,
+        external_message_id=external_message_id,
     )
 
     result = _respond(conversation.state, message)
