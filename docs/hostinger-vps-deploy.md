@@ -6,7 +6,8 @@ Este pipeline publica a imagem Docker no GitHub Container Registry e atualiza a 
 
 - Ubuntu na VPS.
 - DNS do dominio ou subdominio apontando para o IP publico da VPS.
-- Portas `80` e `443` liberadas no firewall.
+- Traefik da Hostinger/Docker Manager publicado como proxy reverso nas portas `80` e `443`.
+- Network Docker externa `traefik-proxy` criada pelo projeto Traefik da Hostinger.
 - Docker Engine com plugin `docker compose`.
 - Usuario de deploy com permissao para executar Docker.
 
@@ -133,31 +134,29 @@ Quando a integracao Meta estiver pronta, incluir os secrets do provedor nesse me
 1. Push em `main` ou execucao manual do workflow `Deploy Hostinger VPS`.
 2. GitHub Actions roda testes.
 3. GitHub Actions cria e publica a imagem `ghcr.io/<owner>/<repo>:<sha>`.
-4. O workflow copia `deploy/hostinger/docker-compose.yml` e `deploy/hostinger/Caddyfile` para a VPS.
+4. O workflow copia `deploy/hostinger/docker-compose.yml` para a VPS.
 5. A VPS faz pull da imagem e executa `docker compose up -d`.
 6. O pipeline valida `https://<VPS_APP_DOMAIN>/health`.
 
-## Troubleshooting TLS no Caddy
+## Roteamento com Traefik
 
-O Caddy gerencia automaticamente os desafios ACME quando `APP_DOMAIN` contem apenas o
-dominio publico, sem `http://` ou `https://`. Nao crie uma rota manual que responda
-`OK` para `/.well-known/acme-challenge/*`: o Let's Encrypt espera o token ACME exato,
-e uma resposta fixa quebra a validacao.
+Este deploy nao publica portas `80` ou `443` e nao inclui proxy reverso proprio.
+O container `api` e conectado a network externa `traefik-proxy` e recebe labels
+Traefik para:
 
-Este deploy desabilita o desafio `tls-alpn-01` e deixa a emissao em `http-01`, que
-exige que a porta 80 publica chegue diretamente ao container Caddy. Depois de alterar
-`deploy/hostinger/Caddyfile`, publique novamente pelo workflow ou rode na VPS:
+- rotear `https://<VPS_APP_DOMAIN>` para a porta interna `8000`;
+- emitir/renovar TLS via certresolver `letsencrypt` configurado no Traefik da Hostinger.
+
+Antes do deploy, confirme na VPS que o projeto Traefik da Hostinger esta ativo e
+que a network compartilhada existe:
 
 ```bash
-cd /opt/falange-mvp
-docker compose --env-file .env.deploy -f docker-compose.yml restart caddy
-docker compose --env-file .env.deploy -f docker-compose.yml logs --tail=100 caddy
+docker network inspect traefik-proxy
 ```
 
-Para validar o caminho publico:
+Depois do deploy, valide:
 
 ```bash
-curl -I "http://<VPS_APP_DOMAIN>/health"
 curl -I "https://<VPS_APP_DOMAIN>/health"
 ```
 
