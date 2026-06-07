@@ -35,6 +35,19 @@ def test_specific_catalog_item_request_collects_address() -> None:
 def test_catalog_item_without_size_asks_for_size() -> None:
     response = _respond("collecting_order", "Quero calabresa")
 
-    assert response.state == "collecting_order"
+    assert response.state == "collecting_size:101"
     assert response.intent == "order"
     assert response.reply == "Qual tamanho da pizza de calabresa? Temos grande ou média."
+
+
+def test_size_selection_uses_pending_catalog_item() -> None:
+    size_prompt = _respond("collecting_order", "Quero muçarela")
+
+    response = _respond(size_prompt.state, "grande")
+
+    assert size_prompt.state == "collecting_size:102"
+    assert response.state == "collecting_address"
+    assert response.intent == "order"
+    assert response.reply == (
+        "Anotei: Pizza grande de muçarela. Informe o endereco completo de entrega."
+    )

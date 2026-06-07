@@ -4,8 +4,11 @@ from unicodedata import normalize
 from sqlalchemy.orm import Session
 
 from app.catalog import (
+    CATALOG_ITEMS,
+    CatalogItem,
     CatalogMatch,
     find_catalog_item,
+    find_catalog_size,
     format_catalog,
     format_order_label,
     format_size_prompt,
@@ -46,7 +49,11 @@ def handle_message(
         external_message_id=external_message_id,
     )
 
-    result = _respond(conversation.state, message)
+    result = _respond(
+        conversation.state,
+        message,
+        pending_size_item=_pending_size_item_from_recent_messages(db, conversation),
+    )
     conversation_helper.update_conversation_state(
         db,
         conversation=conversation,
@@ -76,7 +83,12 @@ class _AgentDecision:
     order_summary: str | None = None
 
 
-def _respond(current_state: str, message: str) -> _AgentDecision:
+def _respond(
+    current_state: str,
+    message: str,
+    *,
+    pending_size_item: CatalogItem | None = None,
+) -> _AgentDecision:
     normalized_message = _normalize(message)
 
     if _should_handoff(normalized_message):
@@ -85,6 +97,10 @@ def _respond(current_state: str, message: str) -> _AgentDecision:
             state="handoff",
             intent="handoff",
         )
+
+    pending_size_item = _pending_size_item(current_state) or pending_size_item
+    if pending_size_item is not None:
+        return _handle_size_selection(pending_size_item, message)
 
     if current_state in ("new", "collecting_order"):
         return _handle_order_collection(message)
@@ -138,7 +154,7 @@ def _handle_order_collection(message: str) -> _AgentDecision:
     if needs_size_selection(match):
         return _AgentDecision(
             reply=format_size_prompt(match.item),
-            state="collecting_order",
+            state=_size_selection_state(match.item),
             intent="order",
         )
 
@@ -151,7 +167,7 @@ def _handle_address_collection(message: str) -> _AgentDecision:
         if needs_size_selection(match):
             return _AgentDecision(
                 reply=format_size_prompt(match.item),
-                state="collecting_order",
+                state=_size_selection_state(match.item),
                 intent="order",
             )
         return _order_from_match(match)
@@ -215,3 +231,59 @@ def _should_handoff(normalized_message: str) -> bool:
         token in normalized_message
         for token in ("humano", "atendente", "pessoa", "reclamar", "cancelar")
     )
+
+
+def _handle_size_selection(item: CatalogItem, message: str) -> _AgentDecision:
+    size = find_catalog_size(message, item)
+    if size is not None:
+        return _order_from_match(CatalogMatch(item=item, size=size))
+
+    match = find_catalog_item(message)
+    if match is not None:
+        if needs_size_selection(match):
+            return _AgentDecision(
+                reply=format_size_prompt(match.item),
+                state=_size_selection_state(match.item),
+                intent="order",
+            )
+        return _order_from_match(match)
+
+    if is_catalog_query(message):
+        return _catalog_fallback()
+
+    return _AgentDecision(
+        reply=format_size_prompt(item),
+        state=_size_selection_state(item),
+        intent="order",
+    )
+
+
+def _size_selection_state(item: CatalogItem) -> str:
+    return f"collecting_size:{item.id}"
+
+
+def _pending_size_item(current_state: str) -> CatalogItem | None:
+    prefix = "collecting_size:"
+    if not current_state.startswith(prefix):
+        return None
+
+    try:
+        item_id = int(current_state.removeprefix(prefix))
+    except ValueError:
+        return None
+
+    return next((item for item in CATALOG_ITEMS if item.id == item_id), None)
+
+
+def _pending_size_item_from_recent_messages(db: Session, conversation) -> CatalogItem | None:
+    if conversation.state not in ("collecting_order",) and _pending_size_item(conversation.state) is None:
+        return None
+
+    for message in conversation_helper.list_recent_messages(db, conversation=conversation, limit=5):
+        if message.direction != "outbound":
+            continue
+        for item in CATALOG_ITEMS:
+            if message.content == format_size_prompt(item):
+                return item
+
+    return None
