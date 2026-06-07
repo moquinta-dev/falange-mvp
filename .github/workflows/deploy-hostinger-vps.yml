@@ -206,7 +206,6 @@ jobs:
 
           scp -i "$HOME/.ssh/hostinger_deploy" -P "$VPS_PORT" \
             deploy/hostinger/docker-compose.yml \
-            deploy/hostinger/Caddyfile \
             "$deploy_env" \
             "$VPS_USER@$VPS_HOST:$VPS_APP_DIR/"
 
