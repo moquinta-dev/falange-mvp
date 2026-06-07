@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     app_debug: bool = True
     database_url: str = "sqlite:///data/falange.db"
+    whatsapp_verify_token: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    meta_app_secret: str = ""
+    meta_graph_api_version: str = "v23.0"
+    meta_validate_signature: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

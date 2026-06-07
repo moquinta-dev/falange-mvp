@@ -101,10 +101,14 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_APP_DOMAIN: ${{ secrets.VPS_APP_DOMAIN }}
+          WHATSAPP_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
         run: |
           set -euo pipefail
 
-          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DOMAIN; do
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DOMAIN WHATSAPP_VERIFY_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_PHONE_NUMBER_ID META_APP_SECRET; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing required deployment secret: $name"
               exit 1
@@ -194,6 +198,12 @@ jobs:
           VPS_APP_DIR: ${{ steps.ssh.outputs.app-dir }}
           VPS_PORT: ${{ steps.ssh.outputs.port }}
           VPS_APP_DOMAIN: ${{ secrets.VPS_APP_DOMAIN }}
+          WHATSAPP_VERIFY_TOKEN: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+          META_GRAPH_API_VERSION: ${{ secrets.META_GRAPH_API_VERSION }}
+          META_VALIDATE_SIGNATURE: ${{ secrets.META_VALIDATE_SIGNATURE }}
           FALANGE_IMAGE: ${{ needs.build-and-push.outputs.image-ref }}
         run: |
           set -euo pipefail
@@ -202,6 +212,12 @@ jobs:
           {
             printf 'FALANGE_IMAGE=%s\n' "$FALANGE_IMAGE"
             printf 'APP_DOMAIN=%s\n' "$VPS_APP_DOMAIN"
+            printf 'WHATSAPP_VERIFY_TOKEN=%s\n' "$WHATSAPP_VERIFY_TOKEN"
+            printf 'WHATSAPP_ACCESS_TOKEN=%s\n' "$WHATSAPP_ACCESS_TOKEN"
+            printf 'WHATSAPP_PHONE_NUMBER_ID=%s\n' "$WHATSAPP_PHONE_NUMBER_ID"
+            printf 'META_APP_SECRET=%s\n' "$META_APP_SECRET"
+            printf 'META_GRAPH_API_VERSION=%s\n' "${META_GRAPH_API_VERSION:-v23.0}"
+            printf 'META_VALIDATE_SIGNATURE=%s\n' "${META_VALIDATE_SIGNATURE:-false}"
           } > "$deploy_env"
 
           scp -i "$HOME/.ssh/hostinger_deploy" -P "$VPS_PORT" \
@@ -210,7 +226,7 @@ jobs:
             "$VPS_USER@$VPS_HOST:$VPS_APP_DIR/"
 
           ssh -i "$HOME/.ssh/hostinger_deploy" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "mv '$VPS_APP_DIR/$(basename "$deploy_env")' '$VPS_APP_DIR/.env.deploy'"
+            "mv '$VPS_APP_DIR/$(basename "$deploy_env")' '$VPS_APP_DIR/.env.deploy' && chmod 600 '$VPS_APP_DIR/.env.deploy'"
 
       - name: Deploy on VPS
         env:

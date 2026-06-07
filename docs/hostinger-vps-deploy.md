@@ -98,6 +98,10 @@ VPS_HOST          IP ou FQDN da VPS
 VPS_USER          usuario SSH de deploy
 VPS_SSH_KEY       chave privada SSH
 VPS_APP_DOMAIN    dominio publico da API, sem https://
+WHATSAPP_VERIFY_TOKEN     token forte configurado tambem no app da Meta
+WHATSAPP_ACCESS_TOKEN     access token da WhatsApp Cloud API
+WHATSAPP_PHONE_NUMBER_ID  phone number ID do WhatsApp Business
+META_APP_SECRET           app secret do aplicativo Meta
 ```
 
 Opcionais:
@@ -105,6 +109,8 @@ Opcionais:
 ```text
 VPS_PORT          porta SSH, padrao 22
 VPS_APP_DIR       diretorio remoto, padrao /opt/falange-mvp
+META_GRAPH_API_VERSION    versao da Graph API, padrao v23.0
+META_VALIDATE_SIGNATURE   true para exigir X-Hub-Signature-256, padrao false
 ```
 
 ## Arquivo .env da app na VPS
@@ -137,6 +143,12 @@ Quando a integracao Meta estiver pronta, incluir os secrets do provedor nesse me
 4. O workflow copia `deploy/hostinger/docker-compose.yml` para a VPS.
 5. A VPS faz pull da imagem e executa `docker compose up -d`.
 6. O pipeline valida `https://<VPS_APP_DOMAIN>/health`.
+
+O endpoint publico do webhook WhatsApp fica em:
+
+```text
+https://<VPS_APP_DOMAIN>/webhook/whatsapp
+```
 
 ## Roteamento com Traefik
 

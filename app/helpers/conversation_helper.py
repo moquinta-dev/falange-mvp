@@ -55,6 +55,20 @@ def add_message(
     return message
 
 
+def get_message_by_external_id(
+    db: Session,
+    *,
+    conversation: Conversation,
+    external_message_id: str,
+) -> Message | None:
+    return db.scalar(
+        select(Message).where(
+            Message.conversation_id == conversation.id,
+            Message.external_message_id == external_message_id,
+        )
+    )
+
+
 def update_conversation_state(
     db: Session,
     *,
