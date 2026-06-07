@@ -95,14 +95,26 @@ async def receive_whatsapp_message(
 
     try:
         await whatsapp_client.send_text(to=message["from"], text=result.reply)
-    except httpx.HTTPError as exc:
+    except httpx.HTTPStatusError as exc:
+        logger.exception(
+            "WhatsApp Cloud API send failed conversation_id=%s status_code=%s response=%s",
+            result.conversation_id,
+            exc.response.status_code,
+            _response_body_for_log(exc.response),
+        )
+        return {"status": "reply_failed", "conversation_id": result.conversation_id}
+    except httpx.HTTPError:
         logger.exception(
             "WhatsApp Cloud API send failed conversation_id=%s",
             result.conversation_id,
         )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="WhatsApp Cloud API request failed",
-        ) from exc
+        return {"status": "reply_failed", "conversation_id": result.conversation_id}
 
     return {"status": "ok", "conversation_id": result.conversation_id}
+
+
+def _response_body_for_log(response: httpx.Response) -> str:
+    body = response.text.strip()
+    if not body:
+        return "<empty>"
+    return body[:2000]
