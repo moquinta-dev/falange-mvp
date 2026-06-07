@@ -175,14 +175,59 @@ jobs:
           port="${VPS_PORT:-22}"
           app_dir="${VPS_APP_DIR:-/opt/falange-mvp}"
 
+          if [[ "$VPS_HOST" == http://* || "$VPS_HOST" == https://* || "$VPS_HOST" == */* ]]; then
+            echo "::error::VPS_HOST must be an IP address or hostname only, without protocol or path."
+            exit 1
+          fi
+
+          if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+            echo "::error::VPS_PORT must be a valid TCP port number."
+            exit 1
+          fi
+
           install -m 700 -d "$HOME/.ssh"
           printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/hostinger_infra"
           chmod 600 "$HOME/.ssh/hostinger_infra"
-          ssh-keyscan -p "$port" "$VPS_HOST" >> "$HOME/.ssh/known_hosts"
+
+          known_hosts_entry="$RUNNER_TEMP/hostinger_known_hosts"
+          known_hosts_error="$RUNNER_TEMP/hostinger_ssh_keyscan_error"
+
+          if ! ssh-keyscan -T 15 -p "$port" "$VPS_HOST" > "$known_hosts_entry" 2> "$known_hosts_error"; then
+            echo "::error::Unable to reach SSH on VPS_HOST at port $port while building known_hosts."
+            echo "Check VPS_HOST, VPS_PORT, VPS firewall/security group, and that sshd is running."
+            cat "$known_hosts_error"
+            exit 1
+          fi
+
+          if [ ! -s "$known_hosts_entry" ]; then
+            echo "::error::ssh-keyscan reached no SSH host keys for VPS_HOST at port $port."
+            cat "$known_hosts_error"
+            exit 1
+          fi
+
+          cat "$known_hosts_entry" >> "$HOME/.ssh/known_hosts"
 
           echo "port=$port" >> "$GITHUB_OUTPUT"
           echo "app-dir=$app_dir" >> "$GITHUB_OUTPUT"
           echo "key-path=$HOME/.ssh/hostinger_infra" >> "$GITHUB_OUTPUT"
+
+      - name: Test SSH connection
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ steps.ssh.outputs.port }}
+          VPS_KEY_PATH: ${{ steps.ssh.outputs.key-path }}
+        run: |
+          set -euo pipefail
+
+          ssh \
+            -i "$VPS_KEY_PATH" \
+            -p "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "true"
 
       - name: Build Ansible inventory
         env:
