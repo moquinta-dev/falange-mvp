@@ -145,15 +145,18 @@ jobs:
           known_hosts_entry="$RUNNER_TEMP/hostinger_known_hosts"
           known_hosts_error="$RUNNER_TEMP/hostinger_ssh_keyscan_error"
 
-          if ! ssh-keyscan -T 15 -p "$port" "$VPS_HOST" > "$known_hosts_entry" 2> "$known_hosts_error"; then
-            echo "::error::Unable to reach SSH on VPS_HOST at port $port while building known_hosts."
-            echo "Check VPS_HOST, VPS_PORT, VPS firewall/security group, and that sshd is running."
-            cat "$known_hosts_error"
-            exit 1
-          fi
+          for attempt in $(seq 1 12); do
+            if ssh-keyscan -T 15 -p "$port" "$VPS_HOST" > "$known_hosts_entry" 2> "$known_hosts_error"; then
+              break
+            fi
+
+            echo "SSH keyscan attempt ${attempt} failed; retrying in 10 seconds."
+            sleep 10
+          done
 
           if [ ! -s "$known_hosts_entry" ]; then
-            echo "::error::ssh-keyscan reached no SSH host keys for VPS_HOST at port $port."
+            echo "::error::Unable to reach SSH on VPS_HOST at port $port while building known_hosts."
+            echo "Check VPS_HOST, VPS_PORT, VPS firewall/security group, and that sshd is running."
             cat "$known_hosts_error"
             exit 1
           fi
