@@ -243,6 +243,8 @@ jobs:
             chmod 600 .env
           fi
 
+          docker network inspect traefik-proxy >/dev/null 2>&1 || docker network create traefik-proxy
+
           docker compose --env-file .env.deploy -f docker-compose.yml pull
           docker compose --env-file .env.deploy -f docker-compose.yml up -d --remove-orphans
           docker image prune -f

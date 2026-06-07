@@ -7,7 +7,7 @@ Este pipeline publica a imagem Docker no GitHub Container Registry e atualiza a 
 - Ubuntu na VPS.
 - DNS do dominio ou subdominio apontando para o IP publico da VPS.
 - Traefik da Hostinger/Docker Manager publicado como proxy reverso nas portas `80` e `443`.
-- Network Docker externa `traefik-proxy` criada pelo projeto Traefik da Hostinger.
+- Network Docker externa `traefik-proxy` compartilhada com o Traefik da Hostinger.
 - Docker Engine com plugin `docker compose`.
 - Usuario de deploy com permissao para executar Docker.
 
@@ -148,7 +148,9 @@ Traefik para:
 - emitir/renovar TLS via certresolver `letsencrypt` configurado no Traefik da Hostinger.
 
 Antes do deploy, confirme na VPS que o projeto Traefik da Hostinger esta ativo e
-que a network compartilhada existe:
+conectado a network compartilhada. O workflow cria `traefik-proxy` se ela ainda
+nao existir, mas o Traefik tambem precisa estar conectado a ela para rotear para
+o container `api`:
 
 ```bash
 docker network inspect traefik-proxy
