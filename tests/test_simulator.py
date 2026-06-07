@@ -122,6 +122,73 @@ def test_simulator_shows_catalog_for_generic_pizza_request(
     asyncio.run(run())
 
 
+def test_simulator_uses_pending_item_for_size_selection(client: httpx.AsyncClient) -> None:
+    async def run() -> None:
+        external_id = "simulator-user-pending-size"
+
+        size_prompt_response = await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "Quero muçarela",
+            },
+        )
+        size_response = await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "grande",
+            },
+        )
+
+        assert size_prompt_response.status_code == 200
+        assert size_prompt_response.json()["state"] == "collecting_size:102"
+        assert size_response.status_code == 200
+        assert size_response.json()["state"] == "collecting_address"
+        assert size_response.json()["intent"] == "order"
+        assert size_response.json()["reply"] == (
+            "Anotei: Pizza grande de muçarela. Informe o endereco completo de entrega."
+        )
+
+    asyncio.run(run())
+
+
+def test_simulator_infers_legacy_pending_item_from_last_size_prompt(
+    client: httpx.AsyncClient,
+) -> None:
+    async def run() -> None:
+        external_id = "simulator-user-legacy-pending-size"
+
+        size_prompt_response = await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "Quero muçarela",
+            },
+        )
+        conversation_id = size_prompt_response.json()["conversation_id"]
+        await client.patch(
+            f"/conversations/{conversation_id}/state",
+            json={"state": "collecting_order"},
+        )
+
+        size_response = await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "média",
+            },
+        )
+
+        assert size_response.status_code == 200
+        assert size_response.json()["state"] == "collecting_address"
+        assert size_response.json()["reply"] == (
+            "Anotei: Pizza média de muçarela. Informe o endereco completo de entrega."
+        )
+
+    asyncio.run(run())
+
+
 def test_simulator_shows_catalog_for_generic_pizza_request_while_collecting_address(
     client: httpx.AsyncClient,
 ) -> None:
