@@ -18,8 +18,11 @@ from app.main import app
 class FakeWhatsAppClient:
     def __init__(self) -> None:
         self.sent: list[dict[str, str]] = []
+        self.error: httpx.HTTPError | None = None
 
     async def send_text(self, *, to: str, text: str) -> dict[str, object]:
+        if self.error is not None:
+            raise self.error
         self.sent.append({"to": to, "text": text})
         return {"messages": [{"id": "wamid.outbound-test"}]}
 
@@ -176,6 +179,37 @@ def test_whatsapp_webhook_is_idempotent_by_message_id(whatsapp_client) -> None:
         assert second_response.status_code == 200
         assert second_response.json()["status"] == "duplicate"
         assert len(fake_client.sent) == 1
+
+    asyncio.run(run())
+
+
+def test_whatsapp_webhook_acks_when_reply_send_fails(whatsapp_client) -> None:
+    async def run() -> None:
+        client, fake_client = whatsapp_client
+        request = httpx.Request("POST", "https://graph.facebook.com/v23.0/123456789/messages")
+        response = httpx.Response(
+            400,
+            request=request,
+            json={
+                "error": {
+                    "message": "(#100) Invalid parameter",
+                    "type": "OAuthException",
+                    "code": 100,
+                    "fbtrace_id": "test-trace",
+                }
+            },
+        )
+        fake_client.error = httpx.HTTPStatusError(
+            "Client error '400 Bad Request'",
+            request=request,
+            response=response,
+        )
+
+        webhook_response = await client.post("/webhook/whatsapp", json=_message_payload())
+
+        assert webhook_response.status_code == 200
+        assert webhook_response.json()["status"] == "reply_failed"
+        assert webhook_response.json()["conversation_id"] > 0
 
     asyncio.run(run())
 
