@@ -9,10 +9,15 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.catalog import format_catalog
 from app.core.database import Base, get_db
 from app.core.settings import get_settings
 from app.helpers.whatsapp_cloud_client import get_whatsapp_client
 from app.main import app
+
+_CATALOG_REPLY = (
+    f"Posso te ajudar com o pedido. No momento temos: {format_catalog()}."
+)
 
 
 class FakeWhatsAppClient:
@@ -63,7 +68,10 @@ def whatsapp_client(tmp_path, monkeypatch) -> Generator[tuple[httpx.AsyncClient,
         get_settings.cache_clear()
 
 
-def _message_payload(message_id: str = "wamid.test001") -> dict[str, object]:
+def _message_payload(
+    message_id: str = "wamid.test001",
+    text: str = "quero uma pizza grande de calabresa",
+) -> dict[str, object]:
     return {
         "entry": [
             {
@@ -75,7 +83,7 @@ def _message_payload(message_id: str = "wamid.test001") -> dict[str, object]:
                                     "from": "5571999999999",
                                     "id": message_id,
                                     "type": "text",
-                                    "text": {"body": "quero uma pizza grande de calabresa"},
+                                    "text": {"body": text},
                                 }
                             ]
                         }
@@ -179,6 +187,42 @@ def test_whatsapp_webhook_is_idempotent_by_message_id(whatsapp_client) -> None:
         assert second_response.status_code == 200
         assert second_response.json()["status"] == "duplicate"
         assert len(fake_client.sent) == 1
+
+    asyncio.run(run())
+
+
+def test_whatsapp_webhook_restarts_order_flow_after_completed_order(whatsapp_client) -> None:
+    async def run() -> None:
+        client, fake_client = whatsapp_client
+
+        first_response = await client.post(
+            "/webhook/whatsapp",
+            json=_message_payload("wamid.repeat-order-1"),
+        )
+        await client.post(
+            "/webhook/whatsapp",
+            json=_message_payload("wamid.repeat-order-2", "Rua das Flores 120"),
+        )
+        completed_response = await client.post(
+            "/webhook/whatsapp",
+            json=_message_payload("wamid.repeat-order-3", "sim"),
+        )
+
+        new_order_response = await client.post(
+            "/webhook/whatsapp",
+            json=_message_payload("wamid.repeat-order-4", "Quero uma pizza"),
+        )
+
+        assert first_response.status_code == 200
+        assert completed_response.status_code == 200
+        assert completed_response.json()["status"] == "ok"
+        assert new_order_response.status_code == 200
+        assert new_order_response.json()["status"] == "ok"
+        assert new_order_response.json()["conversation_id"] == first_response.json()["conversation_id"]
+        assert fake_client.sent[-1] == {
+            "to": "5571999999999",
+            "text": _CATALOG_REPLY,
+        }
 
     asyncio.run(run())
 

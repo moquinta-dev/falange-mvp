@@ -111,6 +111,9 @@ def _respond(
     if current_state == "confirming_order":
         return _handle_confirmation(normalized_message)
 
+    if current_state == "completed" and _starts_new_order(message):
+        return _handle_order_collection(message)
+
     if current_state == "completed":
         return _AgentDecision(
             reply="Seu pedido ja foi confirmado e enviado ao restaurante.",
@@ -231,6 +234,10 @@ def _should_handoff(normalized_message: str) -> bool:
         token in normalized_message
         for token in ("humano", "atendente", "pessoa", "reclamar", "cancelar")
     )
+
+
+def _starts_new_order(message: str) -> bool:
+    return find_catalog_item(message) is not None or is_catalog_query(message)
 
 
 def _handle_size_selection(item: CatalogItem, message: str) -> _AgentDecision:
