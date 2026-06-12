@@ -51,3 +51,19 @@ def test_size_selection_uses_pending_catalog_item() -> None:
     assert response.reply == (
         "Anotei: Pizza grande de muçarela. Informe o endereco completo de entrega."
     )
+
+
+def test_completed_conversation_restarts_on_new_generic_order_request() -> None:
+    response = _respond("completed", "Quero uma pizza")
+
+    assert response.state == "collecting_order"
+    assert response.intent == "fallback"
+    assert response.reply == _CATALOG_REPLY
+
+
+def test_completed_conversation_keeps_status_for_non_order_message() -> None:
+    response = _respond("completed", "obrigado")
+
+    assert response.state == "completed"
+    assert response.intent == "confirmation"
+    assert response.reply == "Seu pedido ja foi confirmado e enviado ao restaurante."

@@ -218,6 +218,54 @@ def test_simulator_shows_catalog_for_generic_pizza_request_while_collecting_addr
     asyncio.run(run())
 
 
+def test_simulator_restarts_order_flow_after_completed_order(
+    client: httpx.AsyncClient,
+) -> None:
+    async def run() -> None:
+        external_id = "simulator-user-repeat-order"
+
+        first_order_response = await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "Quero uma pizza grande de calabresa",
+            },
+        )
+        conversation_id = first_order_response.json()["conversation_id"]
+        await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "Rua das Flores 120",
+            },
+        )
+        completed_response = await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "sim",
+            },
+        )
+
+        new_order_response = await client.post(
+            "/simulator/messages",
+            json={
+                "external_id": external_id,
+                "message": "Quero uma pizza",
+            },
+        )
+
+        assert completed_response.status_code == 200
+        assert completed_response.json()["state"] == "completed"
+        assert new_order_response.status_code == 200
+        assert new_order_response.json()["conversation_id"] == conversation_id
+        assert new_order_response.json()["state"] == "collecting_order"
+        assert new_order_response.json()["intent"] == "fallback"
+        assert new_order_response.json()["reply"] == _CATALOG_REPLY
+
+    asyncio.run(run())
+
+
 def test_simulator_handoff_request_updates_state(client: httpx.AsyncClient) -> None:
     async def run() -> None:
         response = await client.post(
