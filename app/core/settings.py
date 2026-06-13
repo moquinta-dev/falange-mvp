@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "falange-mvp"
     app_env: str = "local"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     app_debug: bool = True
     database_url: str = "sqlite:///data/falange.db"
     whatsapp_verify_token: str = ""
