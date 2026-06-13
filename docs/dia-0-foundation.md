@@ -24,7 +24,7 @@ Objetivo: deixar a base tecnica da POC pronta para executar API, persistir conve
 - Usar SQLite para a POC com arquivo em `/data/falange.db`.
 - Criar modelos `Conversation` e `Message`.
 - Criar helpers para criar/recuperar conversa, persistir mensagem, atualizar estado e listar historico recente.
-- Expor endpoints internos de conversa e mensagem para futura integracao com webhook e OrderAgent.
+- Expor endpoints internos de conversa e mensagem para futura integracao com webhook e DiscoveryAgent.
 - Cobrir fluxo minimo com testes funcionais.
 
 ### Docker Compose (#15)
