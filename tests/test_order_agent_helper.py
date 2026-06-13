@@ -35,6 +35,35 @@ def test_specific_catalog_item_request_collects_address() -> None:
 def test_catalog_item_without_size_asks_for_size() -> None:
     response = _respond("collecting_order", "Quero calabresa")
 
-    assert response.state == "collecting_order"
+    assert response.state == "collecting_size:101"
     assert response.intent == "order"
     assert response.reply == "Qual tamanho da pizza de calabresa? Temos grande ou média."
+
+
+def test_size_selection_uses_pending_catalog_item() -> None:
+    size_prompt = _respond("collecting_order", "Quero muçarela")
+
+    response = _respond(size_prompt.state, "grande")
+
+    assert size_prompt.state == "collecting_size:102"
+    assert response.state == "collecting_address"
+    assert response.intent == "order"
+    assert response.reply == (
+        "Anotei: Pizza grande de muçarela. Informe o endereco completo de entrega."
+    )
+
+
+def test_completed_conversation_restarts_on_new_generic_order_request() -> None:
+    response = _respond("completed", "Quero uma pizza")
+
+    assert response.state == "collecting_order"
+    assert response.intent == "fallback"
+    assert response.reply == _CATALOG_REPLY
+
+
+def test_completed_conversation_keeps_status_for_non_order_message() -> None:
+    response = _respond("completed", "obrigado")
+
+    assert response.state == "completed"
+    assert response.intent == "confirmation"
+    assert response.reply == "Seu pedido ja foi confirmado e enviado ao restaurante."
