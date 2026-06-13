@@ -9,15 +9,25 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.catalog import format_catalog
 from app.core.database import Base, get_db
 from app.core.settings import get_settings
+from app.helpers.discovery_agent_helper import (
+    COMPLETED_REPLY,
+    DISCOVERY_STEPS,
+    GREETING,
+)
 from app.helpers.whatsapp_cloud_client import get_whatsapp_client
 from app.main import app
 
-_CATALOG_REPLY = (
-    f"Posso te ajudar com o pedido. No momento temos: {format_catalog()}."
-)
+_GREETING_REPLY = GREETING + DISCOVERY_STEPS[0].question
+_BUSINESS_ANSWERS = [
+    "Tenho uma loja de roupas femininas",
+    "WhatsApp e Instagram",
+    "Demoro muito para responder e perco vendas",
+    "Quero qualificar quem chega antes de passar para mim",
+    "Uns 40 atendimentos por dia",
+    "João, depois das 18h",
+]
 
 
 class FakeWhatsAppClient:
@@ -70,7 +80,7 @@ def whatsapp_client(tmp_path, monkeypatch) -> Generator[tuple[httpx.AsyncClient,
 
 def _message_payload(
     message_id: str = "wamid.test001",
-    text: str = "quero uma pizza grande de calabresa",
+    text: str = "Quero automatizar meu atendimento",
 ) -> dict[str, object]:
     return {
         "entry": [
@@ -143,7 +153,7 @@ def test_whatsapp_webhook_receives_message_and_sends_reply(whatsapp_client) -> N
         assert fake_client.sent == [
             {
                 "to": "5571999999999",
-                "text": "Anotei: Pizza grande de calabresa. Informe o endereco completo de entrega.",
+                "text": _GREETING_REPLY,
             }
         ]
 
@@ -191,37 +201,34 @@ def test_whatsapp_webhook_is_idempotent_by_message_id(whatsapp_client) -> None:
     asyncio.run(run())
 
 
-def test_whatsapp_webhook_restarts_order_flow_after_completed_order(whatsapp_client) -> None:
+def test_whatsapp_webhook_runs_discovery_flow_until_completed(whatsapp_client) -> None:
     async def run() -> None:
         client, fake_client = whatsapp_client
 
         first_response = await client.post(
             "/webhook/whatsapp",
-            json=_message_payload("wamid.repeat-order-1"),
-        )
-        await client.post(
-            "/webhook/whatsapp",
-            json=_message_payload("wamid.repeat-order-2", "Rua das Flores 120"),
-        )
-        completed_response = await client.post(
-            "/webhook/whatsapp",
-            json=_message_payload("wamid.repeat-order-3", "sim"),
+            json=_message_payload("wamid.discovery-0"),
         )
 
-        new_order_response = await client.post(
+        for index, answer in enumerate(_BUSINESS_ANSWERS):
+            await client.post(
+                "/webhook/whatsapp",
+                json=_message_payload(f"wamid.discovery-{index + 1}", answer),
+            )
+
+        confirmation_response = await client.post(
             "/webhook/whatsapp",
-            json=_message_payload("wamid.repeat-order-4", "Quero uma pizza"),
+            json=_message_payload("wamid.discovery-confirm", "sim"),
         )
 
         assert first_response.status_code == 200
-        assert completed_response.status_code == 200
-        assert completed_response.json()["status"] == "ok"
-        assert new_order_response.status_code == 200
-        assert new_order_response.json()["status"] == "ok"
-        assert new_order_response.json()["conversation_id"] == first_response.json()["conversation_id"]
+        assert fake_client.sent[0] == {"to": "5571999999999", "text": _GREETING_REPLY}
+        assert confirmation_response.status_code == 200
+        assert confirmation_response.json()["status"] == "ok"
+        assert confirmation_response.json()["conversation_id"] == first_response.json()["conversation_id"]
         assert fake_client.sent[-1] == {
             "to": "5571999999999",
-            "text": _CATALOG_REPLY,
+            "text": COMPLETED_REPLY,
         }
 
     asyncio.run(run())

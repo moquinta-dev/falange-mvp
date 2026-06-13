@@ -6,13 +6,23 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.catalog import format_catalog
 from app.core.database import Base, get_db
+from app.helpers.discovery_agent_helper import (
+    COMPLETED_REPLY,
+    DISCOVERY_STEPS,
+    GREETING,
+    SUMMARY_HEADER,
+)
 from app.main import app
 
-_CATALOG_REPLY = (
-    f"Posso te ajudar com o pedido. No momento temos: {format_catalog()}."
-)
+_BUSINESS_ANSWERS = [
+    "Tenho uma loja de roupas femininas",
+    "WhatsApp e Instagram",
+    "Demoro muito para responder e perco vendas",
+    "Quero qualificar quem chega antes de passar para mim",
+    "Uns 40 atendimentos por dia",
+    "João, depois das 18h",
+]
 
 
 @pytest.fixture()
@@ -41,55 +51,56 @@ def client(tmp_path) -> Generator[httpx.AsyncClient, None, None]:
         engine.dispose()
 
 
-def test_simulator_completes_basic_order_flow(client: httpx.AsyncClient) -> None:
+async def _send(client: httpx.AsyncClient, external_id: str, message: str) -> httpx.Response:
+    return await client.post(
+        "/simulator/messages",
+        json={"external_id": external_id, "message": message},
+    )
+
+
+def test_simulator_first_message_greets_and_starts_discovery(client: httpx.AsyncClient) -> None:
     async def run() -> None:
-        external_id = "simulator-user-1"
+        response = await _send(client, "simulator-user-1", "Quero automatizar meu atendimento")
 
-        order_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Quero uma pizza grande de calabresa",
-            },
-        )
-        conversation_id = order_response.json()["conversation_id"]
+        assert response.status_code == 200
+        assert response.json()["state"] == "collecting_business"
+        assert response.json()["intent"] == "greeting"
+        assert response.json()["reply"] == GREETING + DISCOVERY_STEPS[0].question
 
-        address_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Rua das Flores 120",
-            },
-        )
-        confirmation_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "sim",
-            },
-        )
+    asyncio.run(run())
 
-        assert order_response.status_code == 200
-        assert order_response.json()["state"] == "collecting_address"
-        assert order_response.json()["intent"] == "order"
-        assert address_response.status_code == 200
-        assert address_response.json()["state"] == "confirming_order"
-        assert confirmation_response.status_code == 200
-        assert confirmation_response.json()["state"] == "completed"
-        assert confirmation_response.json()["conversation_id"] == conversation_id
+
+def test_simulator_runs_guided_discovery_until_completed(client: httpx.AsyncClient) -> None:
+    async def run() -> None:
+        external_id = "simulator-user-flow"
+
+        first = await _send(client, external_id, "Quero automatizar meu atendimento")
+        conversation_id = first.json()["conversation_id"]
+
+        for answer in _BUSINESS_ANSWERS:
+            step_response = await _send(client, external_id, answer)
+
+        summary_payload = step_response.json()
+        assert summary_payload["state"] == "confirming_summary"
+        assert summary_payload["intent"] == "summary"
+        assert summary_payload["summary"].startswith(SUMMARY_HEADER)
+        for step, answer in zip(DISCOVERY_STEPS, _BUSINESS_ANSWERS):
+            assert f"- {step.label}: {answer}" in summary_payload["summary"]
+
+        confirmation = await _send(client, external_id, "sim")
+
+        assert confirmation.status_code == 200
+        assert confirmation.json()["state"] == "completed"
+        assert confirmation.json()["intent"] == "confirmation"
+        assert confirmation.json()["reply"] == COMPLETED_REPLY
+        assert confirmation.json()["conversation_id"] == conversation_id
 
     asyncio.run(run())
 
 
 def test_simulator_persists_inbound_and_outbound_messages(client: httpx.AsyncClient) -> None:
     async def run() -> None:
-        response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": "simulator-user-2",
-                "message": "Quero uma pizza grande de calabresa",
-            },
-        )
+        response = await _send(client, "simulator-user-2", "Quero automatizar meu atendimento")
         conversation_id = response.json()["conversation_id"]
 
         messages_response = await client.get(f"/conversations/{conversation_id}/messages")
@@ -102,179 +113,9 @@ def test_simulator_persists_inbound_and_outbound_messages(client: httpx.AsyncCli
     asyncio.run(run())
 
 
-def test_simulator_shows_catalog_for_generic_pizza_request(
-    client: httpx.AsyncClient,
-) -> None:
-    async def run() -> None:
-        response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": "simulator-user-generic-pizza",
-                "message": "Quero pizza",
-            },
-        )
-
-        assert response.status_code == 200
-        assert response.json()["state"] == "collecting_order"
-        assert response.json()["intent"] == "fallback"
-        assert response.json()["reply"] == _CATALOG_REPLY
-
-    asyncio.run(run())
-
-
-def test_simulator_uses_pending_item_for_size_selection(client: httpx.AsyncClient) -> None:
-    async def run() -> None:
-        external_id = "simulator-user-pending-size"
-
-        size_prompt_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Quero muçarela",
-            },
-        )
-        size_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "grande",
-            },
-        )
-
-        assert size_prompt_response.status_code == 200
-        assert size_prompt_response.json()["state"] == "collecting_size:102"
-        assert size_response.status_code == 200
-        assert size_response.json()["state"] == "collecting_address"
-        assert size_response.json()["intent"] == "order"
-        assert size_response.json()["reply"] == (
-            "Anotei: Pizza grande de muçarela. Informe o endereco completo de entrega."
-        )
-
-    asyncio.run(run())
-
-
-def test_simulator_infers_legacy_pending_item_from_last_size_prompt(
-    client: httpx.AsyncClient,
-) -> None:
-    async def run() -> None:
-        external_id = "simulator-user-legacy-pending-size"
-
-        size_prompt_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Quero muçarela",
-            },
-        )
-        conversation_id = size_prompt_response.json()["conversation_id"]
-        await client.patch(
-            f"/conversations/{conversation_id}/state",
-            json={"state": "collecting_order"},
-        )
-
-        size_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "média",
-            },
-        )
-
-        assert size_response.status_code == 200
-        assert size_response.json()["state"] == "collecting_address"
-        assert size_response.json()["reply"] == (
-            "Anotei: Pizza média de muçarela. Informe o endereco completo de entrega."
-        )
-
-    asyncio.run(run())
-
-
-def test_simulator_shows_catalog_for_generic_pizza_request_while_collecting_address(
-    client: httpx.AsyncClient,
-) -> None:
-    async def run() -> None:
-        external_id = "simulator-user-address-then-generic-pizza"
-        await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Quero uma pizza grande de calabresa",
-            },
-        )
-
-        response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Quero pizza",
-            },
-        )
-
-        assert response.status_code == 200
-        assert response.json()["state"] == "collecting_order"
-        assert response.json()["intent"] == "fallback"
-        assert response.json()["reply"] == _CATALOG_REPLY
-
-    asyncio.run(run())
-
-
-def test_simulator_restarts_order_flow_after_completed_order(
-    client: httpx.AsyncClient,
-) -> None:
-    async def run() -> None:
-        external_id = "simulator-user-repeat-order"
-
-        first_order_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Quero uma pizza grande de calabresa",
-            },
-        )
-        conversation_id = first_order_response.json()["conversation_id"]
-        await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Rua das Flores 120",
-            },
-        )
-        completed_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "sim",
-            },
-        )
-
-        new_order_response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": external_id,
-                "message": "Quero uma pizza",
-            },
-        )
-
-        assert completed_response.status_code == 200
-        assert completed_response.json()["state"] == "completed"
-        assert new_order_response.status_code == 200
-        assert new_order_response.json()["conversation_id"] == conversation_id
-        assert new_order_response.json()["state"] == "collecting_order"
-        assert new_order_response.json()["intent"] == "fallback"
-        assert new_order_response.json()["reply"] == _CATALOG_REPLY
-
-    asyncio.run(run())
-
-
 def test_simulator_handoff_request_updates_state(client: httpx.AsyncClient) -> None:
     async def run() -> None:
-        response = await client.post(
-            "/simulator/messages",
-            json={
-                "external_id": "simulator-user-3",
-                "message": "quero falar com um atendente",
-            },
-        )
+        response = await _send(client, "simulator-user-3", "quero falar com um atendente")
 
         assert response.status_code == 200
         assert response.json()["state"] == "handoff"

@@ -63,21 +63,21 @@ def test_conversation_message_and_state_flow(client: httpx.AsyncClient) -> None:
             f"/conversations/{conversation_id}/messages",
             json={
                 "direction": "inbound",
-                "content": "Quero uma pizza grande de calabresa",
+                "content": "Quero automatizar meu atendimento",
                 "external_message_id": "wamid.test-message",
             },
         )
         state_response = await client.patch(
             f"/conversations/{conversation_id}/state",
-            json={"state": "collecting_address"},
+            json={"state": "collecting_channels"},
         )
         messages_response = await client.get(f"/conversations/{conversation_id}/messages")
 
         assert message_response.status_code == 201
         assert message_response.json()["conversation_id"] == conversation_id
         assert state_response.status_code == 200
-        assert state_response.json()["state"] == "collecting_address"
+        assert state_response.json()["state"] == "collecting_channels"
         assert messages_response.status_code == 200
-        assert messages_response.json()[0]["content"] == "Quero uma pizza grande de calabresa"
+        assert messages_response.json()[0]["content"] == "Quero automatizar meu atendimento"
 
     asyncio.run(run())
