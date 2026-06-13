@@ -4,22 +4,22 @@ Objetivo: validar o fluxo conversacional sem depender ainda do WhatsApp real ou 
 
 ## Issues em Doing
 
-- #13 OrderAgent
+- #13 DiscoveryAgent
 - #18 Prompt v1
 
 ## Acoes
 
 ### Prompt v1 (#18)
 
-- Documentar o contrato do atendente em `docs/prompts/order_agent_v1.md`.
+- Documentar o contrato do atendente em `docs/prompts/discovery_agent_v1.md`.
 - Definir persona, regras, estados e formato de saida esperado.
-- Restringir o agente para nao inventar itens, precos, prazos ou informacoes nao fornecidas.
+- Restringir o agente para nao inventar preco, prazo, funcionalidade ou resultado.
 - Definir regra de fallback humano.
 
-### OrderAgent (#13)
+### DiscoveryAgent (#13)
 
-- Criar catalogo estatico minimo da POC.
-- Criar helper deterministico para conduzir o fluxo de pedido.
+- Criar helper deterministico para conduzir a conversa guiada de descoberta.
+- Conduzir o lead a contar a essencia do negocio (uma pergunta por vez).
 - Persistir mensagens inbound e outbound usando a camada de conversa.
 - Atualizar o estado da conversa a cada mensagem.
 - Expor `POST /simulator/messages` para testar o fluxo sem WhatsApp.
@@ -27,13 +27,12 @@ Objetivo: validar o fluxo conversacional sem depender ainda do WhatsApp real ou 
 ## Fluxo Simulado
 
 ```text
-Cliente informa pedido
-Agente reconhece item do catalogo
-Agente solicita endereco
-Cliente informa endereco
-Agente solicita confirmacao
-Cliente confirma
-Agente finaliza pedido
+Lead demonstra interesse (vindo da landing page)
+Agente sauda e pergunta sobre o negocio
+Agente coleta canais, dor, objetivo de automacao, volume e contato
+Agente apresenta um resumo da essencia do negocio
+Lead confirma
+Agente encaminha para o time da Falangelabs
 ```
 
 ## Validacao
@@ -47,6 +46,6 @@ Executar:
 Critérios de aceite:
 
 - `POST /simulator/messages` aparece no OpenAPI.
-- O fluxo basico chega ao estado `completed`.
+- O fluxo guiado chega ao estado `completed` apos a confirmacao do resumo.
 - Mensagens inbound e outbound sao persistidas.
-- Pedido fora do fluxo pode ir para `handoff`.
+- Pedido de humano (ou reclamacao) pode ir para `handoff`.

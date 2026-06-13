@@ -61,7 +61,7 @@ curl -X POST "https://<VPS_APP_DOMAIN>/webhook/whatsapp" \
             "from": "5571999999999",
             "id": "wamid.test001",
             "type": "text",
-            "text": { "body": "quero uma pizza grande de calabresa" }
+            "text": { "body": "Quero automatizar meu atendimento" }
           }]
         }
       }]
@@ -106,5 +106,5 @@ Esperado:
 - Mensagens de texto sao persistidas como inbound com `external_message_id`.
 - `message_id` repetido retorna `duplicate` e nao chama a Cloud API de novo.
 - Mensagens nao-texto recebem a resposta `MESSAGE_TYPE_NOT_SUPPORTED`.
-- A resposta do OrderAgent e enviada via
+- A resposta do DiscoveryAgent e enviada via
   `/{WHATSAPP_PHONE_NUMBER_ID}/messages`.

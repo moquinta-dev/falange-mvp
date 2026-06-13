@@ -11,4 +11,4 @@ class SimulatorMessageResponse(BaseModel):
     reply: str
     state: str
     intent: str
-    order_summary: str | None = None
+    summary: str | None = None

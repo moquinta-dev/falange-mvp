@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.settings import Settings, get_settings
-from app.helpers import conversation_helper, order_agent_helper
+from app.helpers import conversation_helper, discovery_agent_helper
 from app.helpers.whatsapp_cloud_client import WhatsAppCloudClient, get_whatsapp_client
 from app.helpers.whatsapp_webhook_helper import (
     extract_whatsapp_message,
@@ -72,7 +72,7 @@ async def receive_whatsapp_message(
         db,
         external_id=external_id,
         channel="whatsapp",
-        initial_state="collecting_order",
+        initial_state=discovery_agent_helper.INITIAL_STATE,
     )
 
     message_id = message.get("message_id", "")
@@ -84,7 +84,7 @@ async def receive_whatsapp_message(
         logger.info("Duplicate WhatsApp message ignored conversation_id=%s", conversation.id)
         return {"status": "duplicate", "conversation_id": conversation.id}
 
-    result = order_agent_helper.handle_message(
+    result = discovery_agent_helper.handle_message(
         db,
         external_id=external_id,
         channel="whatsapp",
