@@ -23,6 +23,15 @@ class Conversation(Base):
         default=utc_now,
         onupdate=utc_now,
     )
+    # Marcos do funil usados pelas métricas (tempo de atendimento e handoff).
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    handed_off_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
