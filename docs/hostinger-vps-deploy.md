@@ -102,6 +102,8 @@ WHATSAPP_VERIFY_TOKEN     token forte configurado tambem no app da Meta
 WHATSAPP_ACCESS_TOKEN     access token da WhatsApp Cloud API
 WHATSAPP_PHONE_NUMBER_ID  phone number ID do WhatsApp Business
 META_APP_SECRET           app secret do aplicativo Meta
+ADMIN_API_TOKEN           token forte para endpoints internos da API
+TRAEFIK_DOCS_BASIC_AUTH_USERS  credenciais htpasswd para /docs no Traefik
 ```
 
 Opcionais:
@@ -131,9 +133,27 @@ APP_ENV=production
 APP_VERSION=0.1.0
 APP_DEBUG=false
 DATABASE_URL=sqlite:////data/falange.db
+ADMIN_API_TOKEN=<token-forte-gerado-com-openssl-rand-hex-32>
 ```
 
 Quando a integracao Meta estiver pronta, incluir os secrets do provedor nesse mesmo arquivo, nunca no Git.
+
+### Seguranca da API
+
+Endpoints internos (`/leads`, `/conversations`, `/simulator`, etc.) exigem header
+`X-API-Key` ou `Authorization: Bearer <ADMIN_API_TOKEN>` quando `APP_ENV` nao e
+`local`. O Swagger (`/docs`) fica desabilitado fora de `local`.
+
+Para defesa em profundidade, o Traefik aplica Basic Auth em `/docs`, `/redoc` e
+`/openapi.json`. Gere o valor de `TRAEFIK_DOCS_BASIC_AUTH_USERS` com:
+
+```bash
+htpasswd -nb admin 'sua-senha-forte'
+```
+
+No secret do GitHub, use a saida completa (`admin:$apr1$...`). No
+`.env.deploy`, escape cada `$` como `$$` para o Docker Compose interpretar
+corretamente nos labels do Traefik.
 
 ## Como funciona
 

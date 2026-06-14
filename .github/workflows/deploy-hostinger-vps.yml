@@ -106,10 +106,12 @@ jobs:
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          TRAEFIK_DOCS_BASIC_AUTH_USERS: ${{ secrets.TRAEFIK_DOCS_BASIC_AUTH_USERS }}
         run: |
           set -euo pipefail
 
-          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DOMAIN WHATSAPP_VERIFY_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_PHONE_NUMBER_ID META_APP_SECRET POSTGRES_PASSWORD; do
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DOMAIN WHATSAPP_VERIFY_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_PHONE_NUMBER_ID META_APP_SECRET POSTGRES_PASSWORD ADMIN_API_TOKEN TRAEFIK_DOCS_BASIC_AUTH_USERS; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing required deployment secret: $name"
               exit 1
@@ -212,6 +214,8 @@ jobs:
           POSTGRES_DB: ${{ vars.POSTGRES_DB || 'falange' }}
           POSTGRES_USER: ${{ vars.POSTGRES_USER || 'falange' }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          TRAEFIK_DOCS_BASIC_AUTH_USERS: ${{ secrets.TRAEFIK_DOCS_BASIC_AUTH_USERS }}
         run: |
           set -euo pipefail
 
@@ -228,6 +232,9 @@ jobs:
             printf 'META_APP_SECRET=%s\n' "$META_APP_SECRET"
             printf 'META_GRAPH_API_VERSION=%s\n' "${META_GRAPH_API_VERSION:-v23.0}"
             printf 'META_VALIDATE_SIGNATURE=%s\n' "${META_VALIDATE_SIGNATURE:-false}"
+            printf 'ADMIN_API_TOKEN=%s\n' "$ADMIN_API_TOKEN"
+            traefik_docs_basic_auth_users="${TRAEFIK_DOCS_BASIC_AUTH_USERS//$/$$}"
+            printf 'TRAEFIK_DOCS_BASIC_AUTH_USERS=%s\n' "$traefik_docs_basic_auth_users"
           } > "$deploy_env"
 
           scp -i "$HOME/.ssh/hostinger_deploy" -P "$VPS_PORT" \
@@ -264,6 +271,7 @@ jobs:
           APP_ENV=production
           APP_VERSION=0.1.0
           APP_DEBUG=false
+          ADMIN_API_TOKEN=
           EOF
             chmod 600 .env
           fi

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_admin_api_key
 from app.core.database import get_db
 from app.helpers import metrics_helper
 from app.models import LandingEvent
@@ -32,7 +33,11 @@ async def record_landing_event(
     return event
 
 
-@router.get("/metrics", response_model=FunnelMetricsResponse)
+@router.get(
+    "/metrics",
+    response_model=FunnelMetricsResponse,
+    dependencies=[Depends(require_admin_api_key)],
+)
 async def funnel_metrics(db: Session = Depends(get_db)):
     """Métricas do funil: % concluídas sem humano, % handoff, tempo médio."""
 
