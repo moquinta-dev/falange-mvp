@@ -9,7 +9,10 @@ services:
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
-      DATABASE_URL: sqlite:////data/falange.db
+      # PostgreSQL na rede privada falange-internal (repositório falange-mvp-infra).
+      # O host falange-postgres só é resolvível dentro dessa rede.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-falange}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@falange-postgres:5432/${POSTGRES_DB:-falange}
+      GRAFANA_DB_ROLE: ${GRAFANA_DB_ROLE:-grafana_ro}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:?WHATSAPP_VERIFY_TOKEN is required}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:?WHATSAPP_ACCESS_TOKEN is required}
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:?WHATSAPP_PHONE_NUMBER_ID is required}
@@ -26,10 +29,9 @@ services:
       - traefik.http.routers.falange-api.tls.certresolver=letsencrypt
       - traefik.http.routers.falange-api.service=falange-api
       - traefik.http.services.falange-api.loadbalancer.server.port=8000
-    volumes:
-      - ./data:/data
     networks:
       - traefik-proxy
+      - falange-internal
     healthcheck:
       test:
         - CMD
@@ -43,4 +45,8 @@ services:
 
 networks:
   traefik-proxy:
+    external: true
+  # Rede privada compartilhada com a stack de dados (falange-mvp-infra).
+  # Dá acesso ao PostgreSQL (falange-postgres) sem exposição na internet.
+  falange-internal:
     external: true

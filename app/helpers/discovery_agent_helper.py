@@ -14,7 +14,7 @@ from unicodedata import normalize
 
 from sqlalchemy.orm import Session
 
-from app.helpers import conversation_helper
+from app.helpers import conversation_helper, lead_helper
 
 
 @dataclass(frozen=True)
@@ -171,6 +171,7 @@ def handle_message(
         channel=channel,
         initial_state=INITIAL_STATE,
     )
+    previous_state = conversation.state
     conversation_helper.add_message(
         db,
         conversation=conversation,
@@ -195,6 +196,8 @@ def handle_message(
         direction="outbound",
         content=decision.reply,
     )
+
+    _persist_funnel(db, conversation, decision, previous_state)
 
     return DiscoveryAgentResult(
         conversation_id=conversation.id,
@@ -311,6 +314,66 @@ def _format_summary(answers: list[str]) -> str:
         value = tail[offset].strip() if offset < len(tail) and tail[offset].strip() else _NOT_INFORMED
         lines.append(f"- {step.label}: {value}")
     return "\n".join(lines)
+
+
+def _answers_by_key(answers: list[str]) -> dict[str, str]:
+    keys = [step.key for step in DISCOVERY_STEPS]
+    mapping: dict[str, str] = {}
+    for index in range(min(len(answers), len(keys))):
+        value = answers[index].strip()
+        if value:
+            mapping[keys[index]] = value
+    return mapping
+
+
+def _persist_funnel(
+    db: Session,
+    conversation,
+    decision: _AgentDecision,
+    previous_state: str,
+) -> None:
+    """Persiste o lead e os marcos do funil conforme as transições de estado."""
+
+    state = decision.state
+
+    if state == CONFIRMATION_STATE and previous_state != CONFIRMATION_STATE:
+        answers = _answers_by_key(_recent_answers(db, conversation))
+        lead_helper.upsert_lead_for_conversation(
+            db,
+            conversation=conversation,
+            answers_by_key=answers,
+            status="new",
+        )
+        return
+
+    if state == COMPLETED_STATE and previous_state != COMPLETED_STATE:
+        conversation_helper.mark_completed(db, conversation=conversation)
+        lead = lead_helper.get_lead_by_conversation(db, conversation.id)
+        if lead is None:
+            answers = _answers_by_key(_recent_answers(db, conversation))
+            lead_helper.upsert_lead_for_conversation(
+                db,
+                conversation=conversation,
+                answers_by_key=answers,
+                status="qualified",
+            )
+        else:
+            lead_helper.update_lead_status(db, lead=lead, status="qualified")
+        return
+
+    if state == HANDOFF_STATE and previous_state != HANDOFF_STATE:
+        conversation_helper.mark_handed_off(db, conversation=conversation)
+        lead = lead_helper.get_lead_by_conversation(db, conversation.id)
+        if lead is None:
+            answers = _answers_by_key(_recent_answers(db, conversation))
+            lead_helper.upsert_lead_for_conversation(
+                db,
+                conversation=conversation,
+                answers_by_key=answers,
+                status="handoff",
+            )
+        else:
+            lead_helper.update_lead_status(db, lead=lead, status="handoff")
 
 
 def _recent_answers(db: Session, conversation) -> list[str]:

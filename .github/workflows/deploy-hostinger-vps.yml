@@ -105,10 +105,11 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -euo pipefail
 
-          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DOMAIN WHATSAPP_VERIFY_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_PHONE_NUMBER_ID META_APP_SECRET; do
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DOMAIN WHATSAPP_VERIFY_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_PHONE_NUMBER_ID META_APP_SECRET POSTGRES_PASSWORD; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing required deployment secret: $name"
               exit 1
@@ -208,6 +209,9 @@ jobs:
           META_GRAPH_API_VERSION: ${{ vars.META_GRAPH_API_VERSION || secrets.META_GRAPH_API_VERSION }}
           META_VALIDATE_SIGNATURE: ${{ vars.META_VALIDATE_SIGNATURE || secrets.META_VALIDATE_SIGNATURE }}
           FALANGE_IMAGE: ${{ needs.build-and-push.outputs.image-ref }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB || 'falange' }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER || 'falange' }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -euo pipefail
 
@@ -215,6 +219,9 @@ jobs:
           {
             printf 'FALANGE_IMAGE=%s\n' "$FALANGE_IMAGE"
             printf 'APP_DOMAIN=%s\n' "$VPS_APP_DOMAIN"
+            printf 'POSTGRES_DB=%s\n' "$POSTGRES_DB"
+            printf 'POSTGRES_USER=%s\n' "$POSTGRES_USER"
+            printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
             printf 'WHATSAPP_VERIFY_TOKEN=%s\n' "$WHATSAPP_VERIFY_TOKEN"
             printf 'WHATSAPP_ACCESS_TOKEN=%s\n' "$WHATSAPP_ACCESS_TOKEN"
             printf 'WHATSAPP_PHONE_NUMBER_ID=%s\n' "$WHATSAPP_PHONE_NUMBER_ID"
@@ -257,12 +264,12 @@ jobs:
           APP_ENV=production
           APP_VERSION=0.1.0
           APP_DEBUG=false
-          DATABASE_URL=sqlite:////data/falange.db
           EOF
             chmod 600 .env
           fi
 
           docker network inspect traefik-proxy >/dev/null 2>&1 || docker network create traefik-proxy
+          docker network inspect falange-internal >/dev/null 2>&1 || docker network create falange-internal
 
           docker compose --env-file .env.deploy -f docker-compose.yml pull
           docker compose --env-file .env.deploy -f docker-compose.yml up -d --remove-orphans
