@@ -1,7 +1,13 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Conversation, Message
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def get_or_create_conversation(
@@ -79,6 +85,24 @@ def update_conversation_state(
     db.add(conversation)
     db.commit()
     db.refresh(conversation)
+    return conversation
+
+
+def mark_completed(db: Session, *, conversation: Conversation) -> Conversation:
+    if conversation.completed_at is None:
+        conversation.completed_at = _utc_now()
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+    return conversation
+
+
+def mark_handed_off(db: Session, *, conversation: Conversation) -> Conversation:
+    if conversation.handed_off_at is None:
+        conversation.handed_off_at = _utc_now()
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
     return conversation
 
 

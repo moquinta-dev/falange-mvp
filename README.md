@@ -29,10 +29,19 @@ O backend inicial já inclui:
 - `FastAPI`
 - `GET /health`
 - `GET /`
-- persistência SQLite para conversas e mensagens
+- persistência para conversas, mensagens, leads, pilotos e clientes
+- SQLite em local/testes e PostgreSQL em produção (`postgresql+psycopg://...`)
 - configuração por ambiente
 - `Dockerfile`
 - `docker-compose.yml`
+
+## Persistência e funil
+
+Em produção o backend usa o PostgreSQL provisionado pelo repositório
+`falange-mvp-infra` (container `falange-postgres` na rede privada
+`falange-internal`, sem exposição na internet). Veja
+[`docs/persistencia-postgres.md`](docs/persistencia-postgres.md) para o modelo
+de dados, o funil e as métricas usadas pelo Grafana.
 
 Execução local esperada:
 
@@ -64,4 +73,20 @@ Endpoint do simulador:
 
 ```text
 POST /simulator/messages
+```
+
+Endpoints do funil e comercial:
+
+```text
+POST /funnel/landing-events        # topo do funil (page_view / whatsapp_click)
+GET  /funnel/metrics               # % sem humano, % handoff, tempo médio
+GET  /leads                        # lista (filtra por ?status=)
+POST /leads
+GET  /leads/{lead_id}
+PATCH /leads/{lead_id}/status      # follow-up comercial
+POST /pilots
+GET  /pilots
+PATCH /pilots/{pilot_id}
+POST /clients
+GET  /clients
 ```
