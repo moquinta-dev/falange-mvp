@@ -2,11 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_admin_api_key
 from app.core.database import get_db
 from app.models import Lead, Pilot
 from app.schemas.pilot import PilotCreate, PilotResponse, PilotUpdate
 
-router = APIRouter(prefix="/pilots", tags=["pilots"])
+router = APIRouter(
+    prefix="/pilots",
+    tags=["pilots"],
+    dependencies=[Depends(require_admin_api_key)],
+)
 
 
 @router.post("", response_model=PilotResponse, status_code=status.HTTP_201_CREATED)
