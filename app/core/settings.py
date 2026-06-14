@@ -1,12 +1,13 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "falange-mvp"
     app_env: str = "local"
-    app_version: str = "0.2.0"
+    app_version: str = "0.3.0"
     app_debug: bool = True
     database_url: str = "sqlite:///data/falange.db"
     # Tentativas de conexão ao banco no startup (útil quando o Postgres ainda
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
     meta_app_secret: str = ""
     meta_graph_api_version: str = "v23.0"
     meta_validate_signature: bool = False
+    # Token para endpoints internos (leads, conversas, simulador, etc.).
+    # Obrigatório quando APP_ENV != local.
+    admin_api_token: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -35,6 +39,16 @@ class Settings(BaseSettings):
     @property
     def cors_allow_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
+
+    @property
+    def expose_openapi_docs(self) -> bool:
+        return self.app_env == "local"
+
+    @model_validator(mode="after")
+    def validate_security_settings(self) -> "Settings":
+        if self.app_env != "local" and not self.admin_api_token:
+            raise ValueError("ADMIN_API_TOKEN is required when APP_ENV is not 'local'")
+        return self
 
 
 @lru_cache

@@ -19,6 +19,7 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:?META_APP_SECRET is required}
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
       META_VALIDATE_SIGNATURE: ${META_VALIDATE_SIGNATURE:-false}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:?ADMIN_API_TOKEN is required}
     expose:
       - "8000"
     labels:
@@ -29,6 +30,14 @@ services:
       - traefik.http.routers.falange-api.tls.certresolver=letsencrypt
       - traefik.http.routers.falange-api.service=falange-api
       - traefik.http.services.falange-api.loadbalancer.server.port=8000
+      # Basic Auth nos paths de documentação OpenAPI (defesa em profundidade).
+      - traefik.http.middlewares.falange-docs-auth.basicauth.users=${TRAEFIK_DOCS_BASIC_AUTH_USERS:?TRAEFIK_DOCS_BASIC_AUTH_USERS is required}
+      - traefik.http.routers.falange-api-docs.rule=Host(`${APP_DOMAIN:?APP_DOMAIN is required}`) && (PathPrefix(`/docs`) || PathPrefix(`/redoc`) || PathPrefix(`/openapi.json`))
+      - traefik.http.routers.falange-api-docs.entrypoints=websecure
+      - traefik.http.routers.falange-api-docs.tls.certresolver=letsencrypt
+      - traefik.http.routers.falange-api-docs.middlewares=falange-docs-auth
+      - traefik.http.routers.falange-api-docs.service=falange-api
+      - traefik.http.routers.falange-api-docs.priority=100
     networks:
       - traefik-proxy
       - falange-internal

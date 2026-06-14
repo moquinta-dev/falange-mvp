@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_admin_api_key
 from app.core.database import get_db
 from app.helpers import conversation_helper
 from app.schemas.conversation import (
@@ -11,7 +12,11 @@ from app.schemas.conversation import (
     MessageResponse,
 )
 
-router = APIRouter(prefix="/conversations", tags=["conversations"])
+router = APIRouter(
+    prefix="/conversations",
+    tags=["conversations"],
+    dependencies=[Depends(require_admin_api_key)],
+)
 
 
 @router.post("", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
