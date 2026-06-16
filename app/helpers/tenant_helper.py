@@ -25,3 +25,36 @@ def resolve_by_phone_number_id(
             Tenant.active.is_(True),
         )
     )
+
+
+def list_tenants(db: Session) -> list[Tenant]:
+    return list(db.scalars(select(Tenant).order_by(Tenant.name)))
+
+
+def upsert_tenant(
+    db: Session,
+    *,
+    name: str,
+    phone_number_id: str,
+    workflow_id: int | None,
+    notify_channel: str = "email",
+    notify_target: str | None = None,
+    active: bool = True,
+) -> Tenant:
+    """Cria/atualiza um tenant por ``phone_number_id`` (idempotente)."""
+
+    tenant = db.scalar(
+        select(Tenant).where(Tenant.whatsapp_phone_number_id == phone_number_id)
+    )
+    if tenant is None:
+        tenant = Tenant(name=name, whatsapp_phone_number_id=phone_number_id)
+        db.add(tenant)
+
+    tenant.name = name
+    tenant.workflow_id = workflow_id
+    tenant.notify_channel = notify_channel
+    tenant.notify_target = notify_target
+    tenant.active = active
+    db.commit()
+    db.refresh(tenant)
+    return tenant

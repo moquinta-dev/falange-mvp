@@ -56,6 +56,100 @@ class WorkflowError(ValueError):
     """Definição de workflow inválida ou inconsistente."""
 
 
+_VALID_NODE_TYPES = ("text", "choice", "terminal")
+
+
+def validate_definition(definition: Any) -> None:
+    """Valida a árvore de um workflow; levanta ``WorkflowError`` se inválida.
+
+    Usado tanto pelo endpoint de onboarding (Fase 4) quanto pelos helpers de
+    upsert, garantindo que apenas fluxos consistentes cheguem ao banco — afinal
+    cadastrar um adopter não passa por code review.
+    """
+
+    if not isinstance(definition, dict):
+        raise WorkflowError("definição deve ser um objeto JSON")
+
+    nodes = definition.get("nodes")
+    start_id = definition.get("start")
+    if not isinstance(nodes, dict) or not nodes:
+        raise WorkflowError("definição inválida: 'nodes' ausente ou vazio")
+    if not isinstance(start_id, str) or start_id not in nodes:
+        raise WorkflowError(
+            "definição inválida: 'start' ausente ou não aponta para um nó existente"
+        )
+
+    has_terminal = False
+    for node_id, node in nodes.items():
+        if not isinstance(node, dict):
+            raise WorkflowError(f"nó {node_id!r} deve ser um objeto")
+
+        node_type = node.get("type")
+        if node_type not in _VALID_NODE_TYPES:
+            raise WorkflowError(f"nó {node_id!r} tem tipo inválido: {node_type!r}")
+
+        if node_type == "terminal":
+            has_terminal = True
+            continue
+
+        prompt = node.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise WorkflowError(f"nó {node_id!r} precisa de 'prompt' não vazio")
+
+        if node_type == "text":
+            _validate_next(node_id, node.get("next"), nodes)
+        else:  # choice
+            options = node.get("options")
+            if not isinstance(options, list) or not options:
+                raise WorkflowError(f"nó {node_id!r} precisa de 'options' não vazio")
+            for index, option in enumerate(options, start=1):
+                if not isinstance(option, dict):
+                    raise WorkflowError(
+                        f"opção #{index} do nó {node_id!r} deve ser um objeto"
+                    )
+                label = option.get("label")
+                if not isinstance(label, str) or not label.strip():
+                    raise WorkflowError(
+                        f"opção #{index} do nó {node_id!r} precisa de 'label' não vazio"
+                    )
+                _validate_next(node_id, option.get("next"), nodes)
+
+    if not has_terminal:
+        raise WorkflowError("definição inválida: nenhum nó do tipo 'terminal'")
+
+    _validate_reachability(start_id, nodes)
+
+
+def _validate_next(node_id: str, next_id: Any, nodes: dict[str, Any]) -> None:
+    if not isinstance(next_id, str) or next_id not in nodes:
+        raise WorkflowError(
+            f"nó {node_id!r} aponta para destino inexistente: {next_id!r}"
+        )
+
+
+def _validate_reachability(start_id: str, nodes: dict[str, Any]) -> None:
+    seen: set[str] = set()
+    stack = [start_id]
+    while stack:
+        node_id = stack.pop()
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        node = nodes[node_id]
+        if node.get("type") == "text":
+            stack.append(node["next"])
+        elif node.get("type") == "choice":
+            for option in node.get("options", []):
+                stack.append(option["next"])
+
+    unreachable = set(nodes) - seen
+    if unreachable:
+        raise WorkflowError(
+            "definição inválida: nós inalcançáveis a partir de 'start': "
+            + ", ".join(sorted(unreachable))
+        )
+
+
 @dataclass(frozen=True)
 class WorkflowResult:
     conversation_id: int
