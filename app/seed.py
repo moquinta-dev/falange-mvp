@@ -21,11 +21,10 @@ import logging
 import os
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, init_database
-from app.models import Tenant, Workflow
+from app.helpers import tenant_helper, workflow_helper
 
 logger = logging.getLogger(__name__)
 
@@ -155,53 +154,14 @@ TRIAGEM_PERSONAL_V1: dict[str, Any] = {
 }
 
 
-def upsert_workflow(db: Session, *, key: str, name: str, definition: dict[str, Any]) -> Workflow:
-    workflow = db.scalar(select(Workflow).where(Workflow.key == key))
-    if workflow is None:
-        workflow = Workflow(key=key, name=name, definition=definition)
-        db.add(workflow)
-    else:
-        workflow.name = name
-        workflow.definition = definition
-    db.commit()
-    db.refresh(workflow)
-    return workflow
-
-
-def upsert_tenant(
-    db: Session,
-    *,
-    name: str,
-    phone_number_id: str,
-    workflow: Workflow,
-    notify_channel: str,
-    notify_target: str | None,
-) -> Tenant:
-    tenant = db.scalar(
-        select(Tenant).where(Tenant.whatsapp_phone_number_id == phone_number_id)
-    )
-    if tenant is None:
-        tenant = Tenant(name=name, whatsapp_phone_number_id=phone_number_id)
-        db.add(tenant)
-
-    tenant.name = name
-    tenant.workflow_id = workflow.id
-    tenant.notify_channel = notify_channel
-    tenant.notify_target = notify_target
-    tenant.active = True
-    db.commit()
-    db.refresh(tenant)
-    return tenant
-
-
 def seed(db: Session) -> None:
-    discovery = upsert_workflow(
+    discovery = workflow_helper.upsert_workflow(
         db,
         key="discovery_v1",
         name="Falangelabs — descoberta de negócio",
         definition=DISCOVERY_V1,
     )
-    triagem = upsert_workflow(
+    triagem = workflow_helper.upsert_workflow(
         db,
         key="triagem_personal_v1",
         name="Natália — triagem de novos alunos",
@@ -210,11 +170,11 @@ def seed(db: Session) -> None:
 
     falange_phone = os.getenv("FALANGE_WHATSAPP_PHONE_NUMBER_ID")
     if falange_phone:
-        upsert_tenant(
+        tenant_helper.upsert_tenant(
             db,
             name="Falangelabs",
             phone_number_id=falange_phone,
-            workflow=discovery,
+            workflow_id=discovery.id,
             notify_channel="email",
             notify_target=os.getenv("FALANGE_NOTIFY_TARGET"),
         )
@@ -226,11 +186,11 @@ def seed(db: Session) -> None:
 
     natalia_phone = os.getenv("NATALIA_WHATSAPP_PHONE_NUMBER_ID")
     if natalia_phone:
-        upsert_tenant(
+        tenant_helper.upsert_tenant(
             db,
             name="Natalia Ferreira Corpo e Mente",
             phone_number_id=natalia_phone,
-            workflow=triagem,
+            workflow_id=triagem.id,
             notify_channel="email",
             notify_target=os.getenv("NATALIA_NOTIFY_TARGET"),
         )
