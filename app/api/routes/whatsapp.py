@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.settings import Settings, get_settings
-from app.helpers import conversation_helper, discovery_agent_helper, tenant_helper
+from app.helpers import (
+    conversation_helper,
+    discovery_agent_helper,
+    tenant_helper,
+    workflow_engine,
+    workflow_helper,
+)
 from app.helpers.whatsapp_cloud_client import WhatsAppCloudClient, get_whatsapp_client
 from app.helpers.whatsapp_webhook_helper import (
     extract_whatsapp_message,
@@ -100,13 +106,29 @@ async def receive_whatsapp_message(
         logger.info("Duplicate WhatsApp message ignored conversation_id=%s", conversation.id)
         return {"status": "duplicate", "conversation_id": conversation.id}
 
-    result = discovery_agent_helper.handle_message(
-        db,
-        external_id=external_id,
-        channel="whatsapp",
-        message=message["text"],
-        external_message_id=message_id or None,
+    # Tenant com workflow cadastrado roda no engine data-driven; sem workflow
+    # (fallback/sem tenant) seguimos no discovery agent legado.
+    workflow = (
+        workflow_helper.get_definition_for_tenant(db, tenant)
+        if tenant is not None
+        else None
     )
+    if workflow is not None:
+        result = workflow_engine.handle_message(
+            db,
+            conversation=conversation,
+            workflow=workflow,
+            message=message["text"],
+            external_message_id=message_id or None,
+        )
+    else:
+        result = discovery_agent_helper.handle_message(
+            db,
+            external_id=external_id,
+            channel="whatsapp",
+            message=message["text"],
+            external_message_id=message_id or None,
+        )
     logger.info("WhatsApp message handled conversation_id=%s", result.conversation_id)
 
     try:

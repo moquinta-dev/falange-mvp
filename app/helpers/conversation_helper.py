@@ -97,6 +97,23 @@ def update_conversation_state(
     return conversation
 
 
+def update_workflow_state(
+    db: Session,
+    *,
+    conversation: Conversation,
+    current_node_id: str | None,
+    answers: dict,
+    state: str,
+) -> Conversation:
+    conversation.current_node_id = current_node_id
+    conversation.answers = answers
+    conversation.state = state
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
 def mark_completed(db: Session, *, conversation: Conversation) -> Conversation:
     if conversation.completed_at is None:
         conversation.completed_at = _utc_now()

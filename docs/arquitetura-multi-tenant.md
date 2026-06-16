@@ -149,9 +149,13 @@ número de fallback.
 - **Fase 0 — Fundação multi-tenant (esta entrega):** Alembic, models `Tenant` e
   `Workflow`, `Conversation` estendida, roteamento por `phone_number_id` no
   webhook, envio pelo número do tenant, seed de Falange tenant-zero + Natália.
-- **Fase 1 — Engine genérico de workflow:** interpretador de árvore dirigido por
-  dados; portar `discovery_v1` e escrever `triagem_personal_v1`; escolhas como
-  opções numeradas no MVP.
+- **Fase 1 — Engine genérico de workflow (implementada):**
+  `app/helpers/workflow_engine.py` interpreta a árvore (`text`/`choice`/
+  `terminal`) caminhando por `current_node_id` + `answers`. `choice` é
+  apresentado como opções numeradas e aceita número ou rótulo. O webhook roteia
+  tenants com workflow pelo engine; sem workflow (fallback/sem tenant) segue no
+  discovery agent legado. Em `terminal` marca a conversa como concluída e faz
+  upsert de lead (a separação de funil por tenant é a Fase 3).
 - **Fase 2 — Notificação ao tenant:** e-mail (padrão) e template WhatsApp
   (evolução) ao concluir a triagem.
 - **Fase 3 — Funil/analytics por tenant:** `tenant_id` em `leads`/`landing_events`

@@ -79,10 +79,26 @@ def webhook_client(
         get_settings.cache_clear()
 
 
+_MINIMAL_WORKFLOW = {
+    "start": "ask_name",
+    "nodes": {
+        "ask_name": {
+            "type": "text",
+            "prompt": "Como é o seu nome?",
+            "collect": "nome",
+            "next": "done",
+        },
+        "done": {"type": "terminal", "summary": True},
+    },
+}
+
+
 def _seed_tenant(session_factory: sessionmaker, *, name: str, phone_number_id: str) -> int:
     db = session_factory()
     try:
-        workflow = Workflow(key="triagem_personal_v1", name=name, definition={"start": "done"})
+        workflow = Workflow(
+            key="triagem_personal_v1", name=name, definition=_MINIMAL_WORKFLOW
+        )
         db.add(workflow)
         db.commit()
         db.refresh(workflow)
@@ -205,6 +221,37 @@ def test_webhook_rejects_unknown_tenant_when_required(webhook_client, monkeypatc
         assert response.status_code == 200
         assert response.json()["status"] == "unknown_tenant"
         assert fake_client.sent == []
+
+    asyncio.run(run())
+
+
+def test_webhook_drives_engine_to_completion(webhook_client) -> None:
+    async def run() -> None:
+        client, fake_client, factory = webhook_client
+        _seed_tenant(factory, name="Natália", phone_number_id=_NATALIA_PHONE_ID)
+
+        # 1ª mensagem: apresenta o nó inicial (sem consumir o texto).
+        first = await client.post(
+            "/webhook/whatsapp", json=_payload(_NATALIA_PHONE_ID, message_id="wamid.e-1")
+        )
+        # 2ª mensagem: responde o nome -> alcança o terminal (workflow mínimo).
+        second = await client.post(
+            "/webhook/whatsapp", json=_payload(_NATALIA_PHONE_ID, message_id="wamid.e-2")
+        )
+
+        assert first.json()["status"] == "ok"
+        assert fake_client.sent[0]["text"] == "Como é o seu nome?"
+        assert second.json()["status"] == "ok"
+        assert "Nome: Oi" in fake_client.sent[-1]["text"]
+
+        db = factory()
+        try:
+            conversation = db.scalar(select(Conversation))
+            assert conversation.state == "completed"
+            assert conversation.current_node_id == "done"
+            assert conversation.completed_at is not None
+        finally:
+            db.close()
 
     asyncio.run(run())
 
