@@ -161,6 +161,35 @@ número de fallback.
 - **Fase 3 — Funil/analytics por tenant:** `tenant_id` em `leads`/`landing_events`
   e views escopadas por tenant; piloto/cliente/landing-event como extensão
   só-Falange.
-- **Fase 4 — Onboarding sem deploy:** endpoint admin / seed para criar tenant +
-  workflow; runbook de cadastro.
+- **Fase 4 — Onboarding sem deploy (implementada):** endpoints admin
+  autenticados (`PUT /admin/workflows/{key}`, `PUT /admin/tenants/{phone_number_id}`,
+  além de `GET` para listagem/leitura) que fazem upsert idempotente de workflow e
+  tenant. A definição do workflow é validada (`workflow_engine.validate_definition`)
+  antes de persistir. Esses endpoints são a base do GitOps: o repositório
+  `falange-mvp-seeds` versiona as definições e uma pipeline as aplica, ativando um
+  cliente novo sem deploy do backend.
 ```
+
+## Fase 4 — Onboarding via API (GitOps)
+
+Ativar um adopter passou a ser declarativo: as definições de workflow e tenant
+vivem versionadas em `falange-mvp-seeds` e são aplicadas via API autenticada.
+
+Autenticação: header `X-API-Key: <ADMIN_API_TOKEN>` (ou `Authorization: Bearer`),
+o mesmo esquema dos demais endpoints internos.
+
+Endpoints (idempotentes por chave natural):
+
+- `PUT /admin/workflows/{key}` — body `{ "name": str|null, "definition": {...} }`.
+  Valida a árvore (`start`/`nodes`, tipos, `next` existentes, alcançabilidade, ao
+  menos um `terminal`); `422` se inválida.
+- `GET /admin/workflows` e `GET /admin/workflows/{key}` — listagem/leitura.
+- `PUT /admin/tenants/{phone_number_id}` — body `{ "name", "workflow_key",
+  "notify_channel" (email|whatsapp), "notify_target", "active" }`. `404` se o
+  `workflow_key` não existir.
+- `GET /admin/tenants` — listagem.
+
+Ordem de aplicação: workflow antes do tenant (o tenant referencia o workflow por
+`key`). O `app/seed.py` usa os mesmos helpers (`workflow_helper.upsert_workflow`,
+`tenant_helper.upsert_tenant`), então seed local e pipeline GitOps convergem para
+o mesmo estado.

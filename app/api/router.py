@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.routes.admin import router as admin_router
 from app.api.routes.clients import router as clients_router
 from app.api.routes.conversations import router as conversations_router
 from app.api.routes.funnel import router as funnel_router
@@ -18,3 +19,4 @@ api_router.include_router(funnel_router)
 api_router.include_router(leads_router)
 api_router.include_router(pilots_router)
 api_router.include_router(clients_router)
+api_router.include_router(admin_router)
