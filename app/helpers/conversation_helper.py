@@ -16,6 +16,7 @@ def get_or_create_conversation(
     external_id: str,
     channel: str = "whatsapp",
     initial_state: str = "new",
+    tenant_id: int | None = None,
 ) -> Conversation:
     conversation = db.scalar(
         select(Conversation).where(
@@ -24,12 +25,20 @@ def get_or_create_conversation(
         )
     )
     if conversation is not None:
+        # Backfill: conversa legada/sem tenant passa a apontar para o tenant
+        # resolvido pelo roteamento (transição multi-tenant).
+        if tenant_id is not None and conversation.tenant_id is None:
+            conversation.tenant_id = tenant_id
+            db.add(conversation)
+            db.commit()
+            db.refresh(conversation)
         return conversation
 
     conversation = Conversation(
         channel=channel,
         external_id=external_id,
         state=initial_state,
+        tenant_id=tenant_id,
     )
     db.add(conversation)
     db.commit()
@@ -81,6 +90,23 @@ def update_conversation_state(
     conversation: Conversation,
     state: str,
 ) -> Conversation:
+    conversation.state = state
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+def update_workflow_state(
+    db: Session,
+    *,
+    conversation: Conversation,
+    current_node_id: str | None,
+    answers: dict,
+    state: str,
+) -> Conversation:
+    conversation.current_node_id = current_node_id
+    conversation.answers = answers
     conversation.state = state
     db.add(conversation)
     db.commit()

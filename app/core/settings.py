@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "falange-mvp"
     app_env: str = "local"
-    app_version: str = "0.3.0"
+    app_version: str = "0.4.0"
     app_debug: bool = True
     database_url: str = "sqlite:///data/falange.db"
     # Tentativas de conexão ao banco no startup (útil quando o Postgres ainda
@@ -21,8 +21,16 @@ class Settings(BaseSettings):
     # clique no WhatsApp). Lista separada por vírgula.
     cors_allow_origins: str = "https://www.falangelabs.io,https://falangelabs.io"
     whatsapp_verify_token: str = ""
+    # Token system-user da Falangelabs: envia em nome de qualquer número da WABA.
+    # O número de envio é escolhido por tenant (phone_number_id) em tempo de
+    # execução; este token é compartilhado por todos.
     whatsapp_access_token: str = ""
+    # Número de fallback usado quando nenhum tenant é resolvido pelo
+    # phone_number_id do evento (retrocompatível com o setup single-tenant).
     whatsapp_phone_number_id: str = ""
+    # Quando True, eventos de números sem tenant cadastrado são ignorados
+    # (status "unknown_tenant"). Quando False, usa o número de fallback acima.
+    require_known_tenant: bool = False
     meta_app_secret: str = ""
     meta_graph_api_version: str = "v23.0"
     meta_validate_signature: bool = False
