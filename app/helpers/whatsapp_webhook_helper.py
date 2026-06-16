@@ -10,6 +10,10 @@ def extract_whatsapp_message(payload: dict[str, Any]) -> dict[str, str] | None:
         if not messages:
             return None
 
+        # phone_number_id identifica o número (e portanto o tenant) que recebeu
+        # a mensagem. Vem do metadata do evento da Meta.
+        phone_number_id = value.get("metadata", {}).get("phone_number_id", "")
+
         message = messages[0]
         message_id = message.get("id", "")
 
@@ -18,12 +22,14 @@ def extract_whatsapp_message(payload: dict[str, Any]) -> dict[str, str] | None:
                 "from": message["from"],
                 "text": "MESSAGE_TYPE_NOT_SUPPORTED",
                 "message_id": message_id,
+                "phone_number_id": phone_number_id,
             }
 
         return {
             "from": message["from"],
             "text": message["text"]["body"],
             "message_id": message_id,
+            "phone_number_id": phone_number_id,
         }
     except (KeyError, IndexError, TypeError):
         return None

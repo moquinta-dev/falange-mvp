@@ -35,10 +35,16 @@ class FakeWhatsAppClient:
         self.sent: list[dict[str, str]] = []
         self.error: httpx.HTTPError | None = None
 
-    async def send_text(self, *, to: str, text: str) -> dict[str, object]:
+    async def send_text(
+        self,
+        *,
+        to: str,
+        text: str,
+        phone_number_id: str | None = None,
+    ) -> dict[str, object]:
         if self.error is not None:
             raise self.error
-        self.sent.append({"to": to, "text": text})
+        self.sent.append({"to": to, "text": text, "phone_number_id": phone_number_id})
         return {"messages": [{"id": "wamid.outbound-test"}]}
 
 
@@ -154,6 +160,7 @@ def test_whatsapp_webhook_receives_message_and_sends_reply(whatsapp_client) -> N
             {
                 "to": "5571999999999",
                 "text": _GREETING_REPLY,
+                "phone_number_id": None,
             }
         ]
 
@@ -222,13 +229,18 @@ def test_whatsapp_webhook_runs_discovery_flow_until_completed(whatsapp_client) -
         )
 
         assert first_response.status_code == 200
-        assert fake_client.sent[0] == {"to": "5571999999999", "text": _GREETING_REPLY}
+        assert fake_client.sent[0] == {
+            "to": "5571999999999",
+            "text": _GREETING_REPLY,
+            "phone_number_id": None,
+        }
         assert confirmation_response.status_code == 200
         assert confirmation_response.json()["status"] == "ok"
         assert confirmation_response.json()["conversation_id"] == first_response.json()["conversation_id"]
         assert fake_client.sent[-1] == {
             "to": "5571999999999",
             "text": COMPLETED_REPLY,
+            "phone_number_id": None,
         }
 
     asyncio.run(run())

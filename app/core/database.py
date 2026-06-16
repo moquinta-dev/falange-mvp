@@ -75,12 +75,20 @@ def init_database() -> None:
     import app.models  # noqa: F401
 
     _wait_for_database()
-    Base.metadata.create_all(bind=engine)
 
     if engine.dialect.name == "postgresql":
+        # Produção: o schema é gerido por Alembic (create_all não altera tabelas
+        # existentes, ex.: adicionar conversations.tenant_id).
+        from app.core.migrations import run_migrations
+
+        run_migrations(engine)
+
         from app.core.analytics import apply_analytics_objects
 
         apply_analytics_objects(engine)
+    else:
+        # Local/SQLite: caminho rápido sem migrações.
+        Base.metadata.create_all(bind=engine)
 
 
 async def get_db() -> AsyncGenerator[Session, None]:

@@ -35,6 +35,34 @@ O backend inicial já inclui:
 - `Dockerfile`
 - `docker-compose.yml`
 
+## Migrações (Alembic) e multi-tenant
+
+Em produção (PostgreSQL) o schema é gerido por **Alembic** — `create_all` não
+altera tabelas existentes. As migrações rodam automaticamente no startup; bancos
+legados (criados pela versão antiga via `create_all`) são adotados com `stamp` da
+baseline antes das migrações novas. Em local/testes (SQLite) seguimos com
+`create_all`.
+
+Comandos úteis:
+
+```bash
+alembic upgrade head        # aplica migrações
+alembic revision --autogenerate -m "minha mudança"
+alembic check               # acusa drift entre models e migrações
+```
+
+O backend é **multi-tenant**: um único webhook/token atende vários adopters,
+roteando por `phone_number_id`. Cadastrar um adopter é inserir dados (sem
+deploy). Seed inicial (Falangelabs tenant-zero + Natália):
+
+```bash
+FALANGE_WHATSAPP_PHONE_NUMBER_ID=... NATALIA_WHATSAPP_PHONE_NUMBER_ID=... \
+  python -m app.seed
+```
+
+Detalhes do modelo e do roadmap em
+[`docs/arquitetura-multi-tenant.md`](docs/arquitetura-multi-tenant.md).
+
 ## Persistência e funil
 
 Em produção o backend usa o PostgreSQL provisionado pelo repositório
