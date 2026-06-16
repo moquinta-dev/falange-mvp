@@ -9,11 +9,20 @@ class WhatsAppCloudClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def send_text(self, *, to: str, text: str) -> dict[str, Any]:
+    async def send_text(
+        self,
+        *,
+        to: str,
+        text: str,
+        phone_number_id: str | None = None,
+    ) -> dict[str, Any]:
+        # Envia a partir do número do tenant; cai no número de fallback das
+        # settings quando não informado (setup single-tenant).
+        sender_phone_number_id = phone_number_id or self._settings.whatsapp_phone_number_id
         url = (
             "https://graph.facebook.com/"
             f"{self._settings.meta_graph_api_version}/"
-            f"{self._settings.whatsapp_phone_number_id}/messages"
+            f"{sender_phone_number_id}/messages"
         )
         headers = {
             "Authorization": f"Bearer {self._settings.whatsapp_access_token}",
