@@ -101,7 +101,7 @@ pelos nós com base em `current_node_id` + `answers`:
 }
 ```
 
-## Notificação ao tenant
+## Notificação ao tenant (Fase 2 — implementada)
 
 Ao concluir a triagem (nó `terminal`), o dono do tenant recebe o resumo no canal
 configurado (`notify_channel` + `notify_target`):
@@ -110,6 +110,23 @@ configurado (`notify_channel` + `notify_target`):
 - **WhatsApp no número pessoal (evolução):** mensagem iniciada pelo negócio fora
   da janela de 24h exige **template utility aprovado** pela Meta — o número
   pessoal nunca iniciou conversa. Por isso o e-mail é o padrão inicial.
+
+Como funciona:
+
+- O webhook, ao detectar `result.completed` no engine, agenda o envio numa
+  **`BackgroundTask`** — fora do caminho da resposta ao Meta, já que SMTP é I/O
+  lento. Falha de notificação **não** quebra a triagem (já concluída e persistida);
+  apenas loga.
+- `app/helpers/email_client.py` — `EmailClient` mínimo sobre `smtplib`
+  (`SMTP_SSL` na 465 ou `STARTTLS` na 587), sem dependência nova, injetável via
+  `Depends(get_email_client)` para teste.
+- `app/helpers/notification_helper.py` — despacha por `notify_channel`. Só
+  `email` está implementado; `whatsapp` é ignorado com log (evolução).
+- Configuração por env (ver `.env.example`): `NOTIFICATIONS_ENABLED`,
+  `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`,
+  `SMTP_USE_SSL`. Provedor inicial: **SMTP da Hostinger** (`support@falangelabs.io`);
+  a abstração permite trocar para um serviço transacional (Resend/SES) sem mexer
+  no engine.
 
 ## Migrações (Alembic)
 
@@ -156,8 +173,9 @@ número de fallback.
   tenants com workflow pelo engine; sem workflow (fallback/sem tenant) segue no
   discovery agent legado. Em `terminal` marca a conversa como concluída e faz
   upsert de lead (a separação de funil por tenant é a Fase 3).
-- **Fase 2 — Notificação ao tenant:** e-mail (padrão) e template WhatsApp
-  (evolução) ao concluir a triagem.
+- **Fase 2 — Notificação ao tenant (implementada):** e-mail (padrão, via SMTP
+  da Hostinger) com o resumo ao concluir a triagem, disparado em `BackgroundTask`;
+  template WhatsApp fica como evolução.
 - **Fase 3 — Funil/analytics por tenant:** `tenant_id` em `leads`/`landing_events`
   e views escopadas por tenant; piloto/cliente/landing-event como extensão
   só-Falange.

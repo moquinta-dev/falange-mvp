@@ -2,7 +2,7 @@ import json
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -11,10 +11,12 @@ from app.core.settings import Settings, get_settings
 from app.helpers import (
     conversation_helper,
     discovery_agent_helper,
+    notification_helper,
     tenant_helper,
     workflow_engine,
     workflow_helper,
 )
+from app.helpers.email_client import EmailClient, get_email_client
 from app.helpers.whatsapp_cloud_client import WhatsAppCloudClient, get_whatsapp_client
 from app.helpers.whatsapp_webhook_helper import (
     extract_whatsapp_message,
@@ -48,9 +50,11 @@ async def verify_whatsapp_webhook(
 @router.post("")
 async def receive_whatsapp_message(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
     whatsapp_client: WhatsAppCloudClient = Depends(get_whatsapp_client),
+    email_client: EmailClient = Depends(get_email_client),
 ) -> dict[str, str | int]:
     body = await request.body()
     if settings.meta_validate_signature:
@@ -137,6 +141,26 @@ async def receive_whatsapp_message(
             external_message_id=message_id or None,
         )
     logger.info("WhatsApp message handled conversation_id=%s", result.conversation_id)
+
+    # Triagem concluída (engine data-driven) → notifica o dono do tenant fora do
+    # caminho da resposta ao Meta. SMTP é I/O lento; a BackgroundTask roda após o
+    # response e nunca quebra o fluxo (já concluído e persistido).
+    if (
+        settings.notifications_enabled
+        and tenant is not None
+        and workflow is not None
+        and getattr(result, "completed", False)
+    ):
+        background_tasks.add_task(
+            notification_helper.notify_tenant_of_completion,
+            email_client,
+            tenant_name=tenant.name,
+            notify_channel=tenant.notify_channel,
+            notify_target=tenant.notify_target,
+            lead_phone=message["from"],
+            summary=result.summary,
+            answers=dict(conversation.answers or {}),
+        )
 
     try:
         await whatsapp_client.send_text(

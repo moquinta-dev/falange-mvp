@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     # Obrigatório quando APP_ENV != local.
     admin_api_token: str = ""
 
+    # Notificação ao tenant (Fase 2): ao concluir a triagem, o dono recebe o
+    # resumo por e-mail. Desligado por padrão (local/testes); ativar em produção.
+    notifications_enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_username: str = ""
+    smtp_password: str = ""
+    # Remetente exibido no e-mail; cai em smtp_username quando vazio.
+    smtp_from: str = ""
+    # 465 = SSL implícito (SMTP_SSL); 587 = STARTTLS.
+    smtp_use_ssl: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
