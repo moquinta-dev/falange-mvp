@@ -216,6 +216,15 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
           TRAEFIK_DOCS_BASIC_AUTH_USERS: ${{ secrets.TRAEFIK_DOCS_BASIC_AUTH_USERS }}
+          # Notificação ao tenant (Fase 2). Opcionais: ausentes => notificação
+          # desligada (NOTIFICATIONS_ENABLED=false). Apenas SMTP_PASSWORD é secret.
+          NOTIFICATIONS_ENABLED: ${{ vars.NOTIFICATIONS_ENABLED || secrets.NOTIFICATIONS_ENABLED }}
+          SMTP_HOST: ${{ vars.SMTP_HOST || secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ vars.SMTP_USERNAME || secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ vars.SMTP_FROM || secrets.SMTP_FROM }}
+          SMTP_USE_SSL: ${{ vars.SMTP_USE_SSL || secrets.SMTP_USE_SSL }}
         run: |
           set -euo pipefail
 
@@ -233,6 +242,13 @@ jobs:
             printf 'META_GRAPH_API_VERSION=%s\n' "${META_GRAPH_API_VERSION:-v23.0}"
             printf 'META_VALIDATE_SIGNATURE=%s\n' "${META_VALIDATE_SIGNATURE:-false}"
             printf 'ADMIN_API_TOKEN=%s\n' "$ADMIN_API_TOKEN"
+            printf 'NOTIFICATIONS_ENABLED=%s\n' "${NOTIFICATIONS_ENABLED:-false}"
+            printf 'SMTP_HOST=%s\n' "${SMTP_HOST:-}"
+            printf 'SMTP_PORT=%s\n' "${SMTP_PORT:-465}"
+            printf 'SMTP_USERNAME=%s\n' "${SMTP_USERNAME:-}"
+            printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD:-}"
+            printf 'SMTP_FROM=%s\n' "${SMTP_FROM:-}"
+            printf 'SMTP_USE_SSL=%s\n' "${SMTP_USE_SSL:-true}"
             traefik_docs_basic_auth_users="${TRAEFIK_DOCS_BASIC_AUTH_USERS//$/$$}"
             printf 'TRAEFIK_DOCS_BASIC_AUTH_USERS=%s\n' "$traefik_docs_basic_auth_users"
           } > "$deploy_env"
