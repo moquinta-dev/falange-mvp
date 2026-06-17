@@ -32,6 +32,9 @@ def _alembic_config(engine: Engine) -> Config:
         "sqlalchemy.url",
         engine.url.render_as_string(hide_password=False),
     )
+    # Embarcado no startup: o env.py NÃO deve chamar fileConfig (que desativaria os
+    # loggers já configurados do uvicorn/app). Logging fica a cargo da aplicação.
+    config.attributes["configure_logger"] = False
     return config
 
 
