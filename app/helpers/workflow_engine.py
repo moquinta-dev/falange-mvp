@@ -38,10 +38,6 @@ COMPLETED_REPLY = (
     "Maravilha! Registrei tudo e em breve entramos em contato. Obrigado pelas "
     "informações!"
 )
-COMPLETED_FOLLOWUP = (
-    "Já registramos o seu interesse e em breve falamos com você. Se precisar de "
-    "algo agora, é só pedir para falar com uma pessoa."
-)
 HANDOFF_REPLY = (
     "Claro! Vou encaminhar você para uma pessoa do nosso time. Em breve alguém "
     "entra em contato por aqui."
@@ -250,13 +246,11 @@ def _decide(
         return _present_node(nodes, start_id, answers)
 
     current_node = nodes.get(current_node_id)
+    # Conversa já concluída (nó terminal) ou em um nó obsoleto/inexistente — por
+    # exemplo, definição de workflow que mudou: uma nova mensagem reinicia a
+    # triagem do zero, em vez de repetir o follow-up para sempre (loop).
     if current_node is None or current_node.get("type") == "terminal":
-        return _Decision(
-            reply=COMPLETED_FOLLOWUP,
-            current_node_id=current_node_id,
-            answers=answers,
-            state=COMPLETED_STATE,
-        )
+        return _present_node(nodes, start_id, {})
 
     node_type = current_node.get("type")
     if node_type == "text":

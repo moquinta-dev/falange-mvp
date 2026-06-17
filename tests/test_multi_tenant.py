@@ -93,11 +93,17 @@ _MINIMAL_WORKFLOW = {
 }
 
 
-def _seed_tenant(session_factory: sessionmaker, *, name: str, phone_number_id: str) -> int:
+def _seed_tenant(
+    session_factory: sessionmaker,
+    *,
+    name: str,
+    phone_number_id: str,
+    workflow_key: str = "triagem_personal_v1",
+) -> int:
     db = session_factory()
     try:
         workflow = Workflow(
-            key="triagem_personal_v1", name=name, definition=_MINIMAL_WORKFLOW
+            key=workflow_key, name=name, definition=_MINIMAL_WORKFLOW
         )
         db.add(workflow)
         db.commit()
@@ -182,6 +188,51 @@ def test_webhook_routes_to_tenant_and_sends_from_tenant_number(webhook_client) -
             conversation = db.scalar(select(Conversation))
             assert conversation is not None
             assert conversation.tenant_id == tenant_id
+        finally:
+            db.close()
+
+    asyncio.run(run())
+
+
+def test_same_sender_across_tenants_gets_distinct_conversations(webhook_client) -> None:
+    """O mesmo telefone falando com dois adopters não pode compartilhar conversa.
+
+    Regressão do loop: antes, a conversa era chaveada só pelo remetente, então o
+    estado de triagem de um tenant vazava para o outro (ex.: Falangelabs concluía
+    e a Natália herdava o nó terminal, respondendo sempre o follow-up).
+    """
+
+    async def run() -> None:
+        client, _fake_client, factory = webhook_client
+        falange_id = _seed_tenant(
+            factory,
+            name="Falangelabs",
+            phone_number_id=_FALANGE_PHONE_ID,
+            workflow_key="discovery_v1",
+        )
+        natalia_id = _seed_tenant(
+            factory,
+            name="Natália",
+            phone_number_id=_NATALIA_PHONE_ID,
+            workflow_key="triagem_personal_v1",
+        )
+
+        await client.post(
+            "/webhook/whatsapp", json=_payload(_FALANGE_PHONE_ID, message_id="wamid.f-1")
+        )
+        await client.post(
+            "/webhook/whatsapp", json=_payload(_NATALIA_PHONE_ID, message_id="wamid.n-1")
+        )
+
+        db = factory()
+        try:
+            conversations = list(db.scalars(select(Conversation)))
+            assert len(conversations) == 2
+            assert {c.tenant_id for c in conversations} == {falange_id, natalia_id}
+            assert {c.external_id for c in conversations} == {
+                f"whatsapp:{falange_id}:5571999999999",
+                f"whatsapp:{natalia_id}:5571999999999",
+            }
         finally:
             db.close()
 
