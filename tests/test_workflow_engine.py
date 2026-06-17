@@ -151,13 +151,29 @@ def test_handoff_short_circuits(db: Session) -> None:
     assert conversation.handed_off_at is not None
 
 
-def test_message_after_completion_returns_followup(db: Session) -> None:
+def test_message_after_completion_restarts_flow(db: Session) -> None:
     conversation = _conversation(db)
     _send(db, conversation, "oi")
     _send(db, conversation, "Marina")
     _send(db, conversation, "1")
     _send(db, conversation, "1")  # completa
-    result = _send(db, conversation, "obrigada")
+    result = _send(db, conversation, "oi de novo")
 
-    assert result.reply == workflow_engine.COMPLETED_FOLLOWUP
+    # Nova mensagem numa conversa concluída inicia uma nova triagem, sem loop.
+    assert result.reply == "Como é o seu nome?"
+    assert result.current_node_id == "ask_name"
+    assert result.completed is False
+    assert (conversation.answers or {}) == {}
+
+
+def test_stale_node_id_restarts_flow(db: Session) -> None:
+    conversation = _conversation(db)
+    _send(db, conversation, "oi")
+    # Simula uma conversa apontando para um nó que não existe mais na definição
+    # (workflow alterado após o cadastro do adopter).
+    conversation.current_node_id = "no_longer_exists"
+    result = _send(db, conversation, "oi")
+
+    assert result.reply == "Como é o seu nome?"
+    assert result.current_node_id == "ask_name"
     assert result.completed is False

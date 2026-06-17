@@ -92,7 +92,14 @@ async def receive_whatsapp_message(
         tenant.whatsapp_phone_number_id if tenant is not None else phone_number_id
     )
 
-    external_id = f"whatsapp:{message['from']}"
+    # Conversa escopada por tenant: o mesmo telefone pode falar com adopters
+    # diferentes (ex.: Falangelabs e Natália) sem que os estados de triagem
+    # colidam entre si. Sem tenant resolvido, mantemos o escopo só pelo remetente.
+    external_id = (
+        f"whatsapp:{tenant.id}:{message['from']}"
+        if tenant is not None
+        else f"whatsapp:{message['from']}"
+    )
     conversation = conversation_helper.get_or_create_conversation(
         db,
         external_id=external_id,
