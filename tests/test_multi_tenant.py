@@ -10,6 +10,7 @@ from app import seed as seed_module
 from app.core.database import Base, get_db
 from app.core.settings import get_settings
 from app.helpers import tenant_helper
+from app.helpers.email_client import get_email_client
 from app.helpers.whatsapp_cloud_client import get_whatsapp_client
 from app.main import app
 from app.models import Conversation, Tenant, Workflow
@@ -252,6 +253,63 @@ def test_webhook_drives_engine_to_completion(webhook_client) -> None:
             assert conversation.completed_at is not None
         finally:
             db.close()
+
+    asyncio.run(run())
+
+
+class _FakeEmailClient:
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+
+    def send(self, *, to, subject, body) -> None:
+        self.sent.append({"to": to, "subject": subject, "body": body})
+
+
+def test_webhook_notifies_tenant_on_completion(webhook_client, monkeypatch) -> None:
+    async def run() -> None:
+        client, _fake_whatsapp, factory = webhook_client
+        monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
+        get_settings.cache_clear()
+        fake_email = _FakeEmailClient()
+        app.dependency_overrides[get_email_client] = lambda: fake_email
+        _seed_tenant(factory, name="Natália", phone_number_id=_NATALIA_PHONE_ID)
+
+        # 1ª msg apresenta o nó inicial (sem completar) → nenhuma notificação.
+        await client.post(
+            "/webhook/whatsapp", json=_payload(_NATALIA_PHONE_ID, message_id="wamid.c-1")
+        )
+        assert fake_email.sent == []
+
+        # 2ª msg conclui a triagem → exatamente uma notificação ao dono.
+        await client.post(
+            "/webhook/whatsapp", json=_payload(_NATALIA_PHONE_ID, message_id="wamid.c-2")
+        )
+
+        assert len(fake_email.sent) == 1
+        notification = fake_email.sent[0]
+        assert notification["to"] == "dona@example.com"
+        assert "Natália" in notification["subject"]
+        assert "5571999999999" in notification["body"]
+
+    asyncio.run(run())
+
+
+def test_webhook_does_not_notify_when_disabled(webhook_client) -> None:
+    async def run() -> None:
+        client, _fake_whatsapp, factory = webhook_client
+        # notifications_enabled fica False (padrão da fixture).
+        fake_email = _FakeEmailClient()
+        app.dependency_overrides[get_email_client] = lambda: fake_email
+        _seed_tenant(factory, name="Natália", phone_number_id=_NATALIA_PHONE_ID)
+
+        await client.post(
+            "/webhook/whatsapp", json=_payload(_NATALIA_PHONE_ID, message_id="wamid.d-1")
+        )
+        await client.post(
+            "/webhook/whatsapp", json=_payload(_NATALIA_PHONE_ID, message_id="wamid.d-2")
+        )
+
+        assert fake_email.sent == []
 
     asyncio.run(run())
 
