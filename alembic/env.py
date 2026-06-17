@@ -10,7 +10,13 @@ import app.models  # noqa: F401  (registra todos os models no metadata)
 
 config = context.config
 
-if config.config_file_name is not None:
+# Quando rodado embarcado no startup da app (app.core.migrations), NÃO reconfigurar
+# o logging: o fileConfig do Alembic usa disable_existing_loggers=True por padrão,
+# o que silenciaria os loggers já configurados do uvicorn (inclusive o access log)
+# e da aplicação. Via CLI do Alembic (attributes vazio) mantemos o comportamento padrão.
+if config.config_file_name is not None and config.attributes.get(
+    "configure_logger", True
+):
     fileConfig(config.config_file_name)
 
 # A URL pode ter sido injetada pelo runner (app.core.migrations); caso contrário
