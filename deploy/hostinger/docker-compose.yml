@@ -20,6 +20,15 @@ services:
       META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v23.0}
       META_VALIDATE_SIGNATURE: ${META_VALIDATE_SIGNATURE:-false}
       ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:?ADMIN_API_TOKEN is required}
+      # Notificação ao tenant (Fase 2). Opcionais: com NOTIFICATIONS_ENABLED=false
+      # (default) o backend nem tenta enviar. Só SMTP_PASSWORD é sensível.
+      NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-true}
     expose:
       - "8000"
     labels:
