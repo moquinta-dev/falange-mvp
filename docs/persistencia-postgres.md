@@ -65,12 +65,16 @@ Calculadas de duas formas equivalentes:
 
 | Métrica                          | Origem                                  |
 | -------------------------------- | --------------------------------------- |
-| % conversas concluídas sem humano| `vw_funnel_metrics.pct_completed_without_human` |
-| % conversas com handoff          | `vw_funnel_metrics.pct_handoff`         |
-| Tempo médio de atendimento       | `vw_funnel_metrics.avg_handle_time_seconds` (primeira à última mensagem) |
+| % conversas concluídas sem humano| `vw_conversation_metrics` (agregado no Grafana, filtro por seed) |
+| % conversas com handoff          | `vw_conversation_metrics` (agregado no Grafana, filtro por seed) |
+| Tempo médio de atendimento       | `vw_conversation_metrics.handle_time_seconds` (primeira à última mensagem) |
+| Volume / engajamento / por seed  | `vw_daily_metrics`, `vw_tenant_overview` |
 
 Views criadas: `vw_conversation_metrics`, `vw_funnel_metrics`,
-`vw_daily_metrics`, `vw_lead_funnel`.
+`vw_daily_metrics`, `vw_lead_funnel`, `vw_tenant_overview`.
+
+O dashboard Grafana inclui variável **Seed** (tenants ativos de
+`falange-mvp-seeds`) para filtrar todas as métricas por adopter.
 
 ## Variáveis de ambiente relevantes
 
