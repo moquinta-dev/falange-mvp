@@ -152,12 +152,22 @@ _VIEWS = (
     _TENANT_OVERVIEW_VIEW,
 )
 
+_ANALYTICS_VIEW_NAMES = (
+    "vw_tenant_overview",
+    "vw_lead_funnel",
+    "vw_daily_metrics",
+    "vw_funnel_metrics",
+    "vw_conversation_metrics",
+)
+
 # Postgres não permite CREATE OR REPLACE VIEW quando colunas novas são inseridas
-# no meio da lista (ex.: tenant_id antes de channel). Drop com CASCADE remove
-# dependentes; as views são recriadas logo em seguida no mesmo transaction.
-_DROP_ANALYTICS_VIEWS = """
-DROP VIEW IF EXISTS vw_conversation_metrics CASCADE;
-"""
+# no meio da lista. Só CASCADE a partir de vw_conversation_metrics não basta:
+# views legadas (ex.: vw_lead_funnel antiga) não dependiam dela e ficavam no banco.
+_DROP_ANALYTICS_VIEWS = (
+    "DROP VIEW IF EXISTS "
+    + ", ".join(_ANALYTICS_VIEW_NAMES)
+    + " CASCADE;"
+)
 
 
 def apply_analytics_objects(engine: Engine) -> None:
