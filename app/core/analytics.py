@@ -2,12 +2,13 @@
 
 These views power the FalangeLabs funnel dashboard:
 
-- ``vw_conversation_metrics``: one row per conversation with lifecycle marks and
-  handle time (first to last message).
+- ``vw_conversation_metrics``: one row per conversation with tenant (seed),
+  workflow, lifecycle marks, message count and handle time.
 - ``vw_funnel_metrics``: single aggregate row with the headline KPIs
   (% completed without human, % handoff, average handle time).
-- ``vw_daily_metrics``: daily series for trend panels.
-- ``vw_lead_funnel``: lead counts per commercial-funnel status.
+- ``vw_daily_metrics``: daily series per tenant for trend panels.
+- ``vw_lead_funnel``: lead counts per commercial-funnel status and tenant.
+- ``vw_tenant_overview``: per-tenant rollup for comparison panels.
 
 The backend owns the schema, so it (re)creates these views on startup. The
 Grafana read-only role inherits ``SELECT`` via DEFAULT PRIVILEGES configured by
@@ -25,6 +26,9 @@ _CONVERSATION_METRICS_VIEW = """
 CREATE OR REPLACE VIEW vw_conversation_metrics AS
 SELECT
     c.id AS conversation_id,
+    c.tenant_id,
+    t.name AS tenant_name,
+    w.key AS workflow_key,
     c.channel,
     c.state,
     c.created_at,
@@ -34,15 +38,20 @@ SELECT
     (c.state = 'completed') AS completed_without_human,
     (c.handed_off_at IS NOT NULL OR c.state = 'handoff') AS handed_off,
     (c.state IN ('completed', 'handoff') OR c.handed_off_at IS NOT NULL) AS is_terminal,
+    NOT (c.state IN ('completed', 'handoff') OR c.handed_off_at IS NOT NULL) AS is_active,
     mm.first_message_at,
     mm.last_message_at,
+    COALESCE(mm.message_count, 0) AS message_count,
     EXTRACT(EPOCH FROM (mm.last_message_at - mm.first_message_at)) AS handle_time_seconds
 FROM conversations c
+LEFT JOIN tenants t ON t.id = c.tenant_id
+LEFT JOIN workflows w ON w.id = t.workflow_id
 LEFT JOIN (
     SELECT
         conversation_id,
         MIN(created_at) AS first_message_at,
-        MAX(created_at) AS last_message_at
+        MAX(created_at) AS last_message_at,
+        COUNT(*) AS message_count
     FROM messages
     GROUP BY conversation_id
 ) mm ON mm.conversation_id = c.id;
@@ -76,25 +85,63 @@ _DAILY_METRICS_VIEW = """
 CREATE OR REPLACE VIEW vw_daily_metrics AS
 SELECT
     date_trunc('day', created_at) AS day,
+    tenant_id,
+    tenant_name,
     COUNT(*) AS conversations,
     COUNT(*) FILTER (WHERE completed_without_human) AS completed_without_human,
     COUNT(*) FILTER (WHERE handed_off) AS handed_off,
+    COUNT(*) FILTER (WHERE is_active) AS active_conversations,
     ROUND(
         AVG(handle_time_seconds) FILTER (WHERE is_terminal)::numeric,
         2
-    ) AS avg_handle_time_seconds
+    ) AS avg_handle_time_seconds,
+    ROUND(AVG(message_count)::numeric, 2) AS avg_messages_per_conversation
 FROM vw_conversation_metrics
-GROUP BY 1
-ORDER BY 1;
+GROUP BY 1, 2, 3
+ORDER BY 1, 3;
 """
 
 _LEAD_FUNNEL_VIEW = """
 CREATE OR REPLACE VIEW vw_lead_funnel AS
 SELECT
-    status,
+    l.status,
+    cm.tenant_id,
+    cm.tenant_name,
     COUNT(*) AS leads
-FROM leads
-GROUP BY status;
+FROM leads l
+LEFT JOIN vw_conversation_metrics cm ON cm.conversation_id = l.id
+GROUP BY l.status, cm.tenant_id, cm.tenant_name;
+"""
+
+_TENANT_OVERVIEW_VIEW = """
+CREATE OR REPLACE VIEW vw_tenant_overview AS
+SELECT
+    tenant_id,
+    tenant_name,
+    workflow_key,
+    COUNT(*) AS total_conversations,
+    COUNT(*) FILTER (WHERE is_terminal) AS terminal_conversations,
+    COUNT(*) FILTER (WHERE is_active) AS active_conversations,
+    COUNT(*) FILTER (WHERE completed_without_human) AS completed_without_human,
+    COUNT(*) FILTER (WHERE handed_off) AS handed_off,
+    ROUND(
+        100.0 * COUNT(*) FILTER (WHERE completed_without_human)
+        / NULLIF(COUNT(*) FILTER (WHERE is_terminal), 0),
+        2
+    ) AS pct_completed_without_human,
+    ROUND(
+        100.0 * COUNT(*) FILTER (WHERE handed_off)
+        / NULLIF(COUNT(*) FILTER (WHERE is_terminal), 0),
+        2
+    ) AS pct_handoff,
+    ROUND(
+        AVG(handle_time_seconds) FILTER (WHERE is_terminal)::numeric,
+        2
+    ) AS avg_handle_time_seconds,
+    ROUND(AVG(message_count)::numeric, 2) AS avg_messages_per_conversation
+FROM vw_conversation_metrics
+WHERE tenant_id IS NOT NULL
+GROUP BY tenant_id, tenant_name, workflow_key;
 """
 
 _VIEWS = (
@@ -102,6 +149,7 @@ _VIEWS = (
     _FUNNEL_METRICS_VIEW,
     _DAILY_METRICS_VIEW,
     _LEAD_FUNNEL_VIEW,
+    _TENANT_OVERVIEW_VIEW,
 )
 
 
