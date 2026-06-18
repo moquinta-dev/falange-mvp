@@ -109,7 +109,7 @@ SELECT
     cm.tenant_name,
     COUNT(*) AS leads
 FROM leads l
-LEFT JOIN vw_conversation_metrics cm ON cm.conversation_id = l.id
+LEFT JOIN vw_conversation_metrics cm ON cm.conversation_id = l.conversation_id
 GROUP BY l.status, cm.tenant_id, cm.tenant_name;
 """
 
@@ -152,6 +152,13 @@ _VIEWS = (
     _TENANT_OVERVIEW_VIEW,
 )
 
+# Postgres não permite CREATE OR REPLACE VIEW quando colunas novas são inseridas
+# no meio da lista (ex.: tenant_id antes de channel). Drop com CASCADE remove
+# dependentes; as views são recriadas logo em seguida no mesmo transaction.
+_DROP_ANALYTICS_VIEWS = """
+DROP VIEW IF EXISTS vw_conversation_metrics CASCADE;
+"""
+
 
 def apply_analytics_objects(engine: Engine) -> None:
     """Create/replace the analytics views and grant the read-only role."""
@@ -161,6 +168,8 @@ def apply_analytics_objects(engine: Engine) -> None:
     grafana_role = get_settings().grafana_db_role
 
     with engine.begin() as connection:
+        connection.execute(text(_DROP_ANALYTICS_VIEWS))
+
         for statement in _VIEWS:
             connection.execute(text(statement))
 
