@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     # 465 = SSL implícito (SMTP_SSL); 587 = STARTTLS.
     smtp_use_ssl: bool = True
 
+    # Sweep de conversas inativas (workflow data-driven). Desligado por padrão.
+    idle_sweep_enabled: bool = False
+    idle_nudge_after_minutes: int = 20
+    idle_abandon_after_nudge_minutes: int = 15
+    idle_sweep_batch_size: int = 100
+    # Janela Meta: mensagens proativas só dentro de 24h da última msg do usuário.
+    idle_whatsapp_window_hours: int = 24
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

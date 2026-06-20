@@ -35,10 +35,16 @@ SELECT
     c.updated_at,
     c.completed_at,
     c.handed_off_at,
+    c.abandoned_at,
     (c.state = 'completed') AS completed_without_human,
     (c.handed_off_at IS NOT NULL OR c.state = 'handoff') AS handed_off,
-    (c.state IN ('completed', 'handoff') OR c.handed_off_at IS NOT NULL) AS is_terminal,
-    NOT (c.state IN ('completed', 'handoff') OR c.handed_off_at IS NOT NULL) AS is_active,
+    (c.state = 'abandoned' OR c.abandoned_at IS NOT NULL) AS abandoned,
+    (c.state IN ('completed', 'handoff', 'abandoned')
+        OR c.handed_off_at IS NOT NULL
+        OR c.abandoned_at IS NOT NULL) AS is_terminal,
+    NOT (c.state IN ('completed', 'handoff', 'abandoned')
+        OR c.handed_off_at IS NOT NULL
+        OR c.abandoned_at IS NOT NULL) AS is_active,
     mm.first_message_at,
     mm.last_message_at,
     COALESCE(mm.message_count, 0) AS message_count,
@@ -64,6 +70,7 @@ SELECT
     COUNT(*) FILTER (WHERE is_terminal) AS terminal_conversations,
     COUNT(*) FILTER (WHERE completed_without_human) AS completed_without_human,
     COUNT(*) FILTER (WHERE handed_off) AS handed_off,
+    COUNT(*) FILTER (WHERE abandoned) AS abandoned,
     ROUND(
         100.0 * COUNT(*) FILTER (WHERE completed_without_human)
         / NULLIF(COUNT(*) FILTER (WHERE is_terminal), 0),
@@ -90,6 +97,7 @@ SELECT
     COUNT(*) AS conversations,
     COUNT(*) FILTER (WHERE completed_without_human) AS completed_without_human,
     COUNT(*) FILTER (WHERE handed_off) AS handed_off,
+    COUNT(*) FILTER (WHERE abandoned) AS abandoned,
     COUNT(*) FILTER (WHERE is_active) AS active_conversations,
     ROUND(
         AVG(handle_time_seconds) FILTER (WHERE is_terminal)::numeric,
@@ -124,6 +132,7 @@ SELECT
     COUNT(*) FILTER (WHERE is_active) AS active_conversations,
     COUNT(*) FILTER (WHERE completed_without_human) AS completed_without_human,
     COUNT(*) FILTER (WHERE handed_off) AS handed_off,
+    COUNT(*) FILTER (WHERE abandoned) AS abandoned,
     ROUND(
         100.0 * COUNT(*) FILTER (WHERE completed_without_human)
         / NULLIF(COUNT(*) FILTER (WHERE is_terminal), 0),

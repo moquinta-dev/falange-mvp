@@ -43,6 +43,16 @@ class Conversation(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    # Lembrete de inatividade enviado ao usuário (sweep periódico).
+    idle_nudge_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # Encerramento automático por falta de resposta após o lembrete.
+    abandoned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",

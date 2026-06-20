@@ -11,6 +11,7 @@ from app.core.settings import Settings, get_settings
 from app.helpers import (
     conversation_helper,
     discovery_agent_helper,
+    idle_helper,
     notification_helper,
     tenant_helper,
     workflow_engine,
@@ -125,13 +126,33 @@ async def receive_whatsapp_message(
         else None
     )
     if workflow is not None:
-        result = workflow_engine.handle_message(
-            db,
-            conversation=conversation,
-            workflow=workflow,
-            message=message["text"],
-            external_message_id=message_id or None,
-        )
+        if conversation.idle_nudge_sent_at is not None:
+            if idle_helper.is_continue_token(message["text"]):
+                conversation_helper.clear_idle_nudge(db, conversation=conversation)
+                result = workflow_engine.reprompt_current(
+                    db,
+                    conversation=conversation,
+                    workflow=workflow,
+                    message=message["text"],
+                    external_message_id=message_id or None,
+                )
+            else:
+                conversation_helper.clear_idle_nudge(db, conversation=conversation)
+                result = workflow_engine.handle_message(
+                    db,
+                    conversation=conversation,
+                    workflow=workflow,
+                    message=message["text"],
+                    external_message_id=message_id or None,
+                )
+        else:
+            result = workflow_engine.handle_message(
+                db,
+                conversation=conversation,
+                workflow=workflow,
+                message=message["text"],
+                external_message_id=message_id or None,
+            )
     else:
         result = discovery_agent_helper.handle_message(
             db,
