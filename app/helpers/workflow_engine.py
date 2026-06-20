@@ -18,7 +18,10 @@ Formato da definição::
     }
 
 Escolhas (``choice``) são apresentadas como opções numeradas e aceitam tanto o
-número quanto o texto do rótulo na resposta (UX robusta para WhatsApp).
+número quanto o texto do rótulo na resposta (UX robusta para WhatsApp). Use
+``show_options: false`` quando o ``prompt`` já lista as opções (ex.: com emojis).
+Placeholders ``{chave}`` nos ``prompt``/``reply`` são substituídos pelas respostas
+já coletadas em ``answers``.
 """
 
 from dataclasses import dataclass
@@ -270,7 +273,7 @@ def _advance_text(
 ) -> _Decision:
     if not message.strip():
         return _Decision(
-            reply=REASK_PREFIX + node["prompt"],
+            reply=REASK_PREFIX + _render_prompt(node["prompt"], answers),
             current_node_id=current_node_id,
             answers=answers,
             state=current_node_id,
@@ -293,7 +296,7 @@ def _advance_choice(
     chosen = _match_option(message, options)
     if chosen is None:
         return _Decision(
-            reply=_render_choice(node),
+            reply=_render_choice(node, answers),
             current_node_id=current_node_id,
             answers=answers,
             state=current_node_id,
@@ -316,7 +319,7 @@ def _move_to(
 
     if next_node.get("type") == "terminal":
         summary = _build_summary(answers) if next_node.get("summary") else None
-        reply = next_node.get("reply") or COMPLETED_REPLY
+        reply = _render_prompt(next_node.get("reply") or COMPLETED_REPLY, answers)
         if summary:
             reply = f"{summary}\n\n{reply}"
         return _Decision(
@@ -338,21 +341,31 @@ def _present_node(
 ) -> _Decision:
     node = nodes[node_id]
     return _Decision(
-        reply=_render_node(node),
+        reply=_render_node(node, answers),
         current_node_id=node_id,
         answers=answers,
         state=node_id,
     )
 
 
-def _render_node(node: dict[str, Any]) -> str:
+def _render_prompt(prompt: str, answers: dict[str, Any]) -> str:
+    rendered = prompt
+    for key, value in answers.items():
+        rendered = rendered.replace(f"{{{key}}}", str(value))
+    return rendered
+
+
+def _render_node(node: dict[str, Any], answers: dict[str, Any]) -> str:
     if node.get("type") == "choice":
-        return _render_choice(node)
-    return node["prompt"]
+        return _render_choice(node, answers)
+    return _render_prompt(node["prompt"], answers)
 
 
-def _render_choice(node: dict[str, Any]) -> str:
-    lines = [node["prompt"]]
+def _render_choice(node: dict[str, Any], answers: dict[str, Any]) -> str:
+    prompt = _render_prompt(node["prompt"], answers)
+    if node.get("show_options") is False:
+        return prompt
+    lines = [prompt]
     for index, option in enumerate(node.get("options", []), start=1):
         lines.append(f"{index}. {option['label']}")
     return "\n".join(lines)

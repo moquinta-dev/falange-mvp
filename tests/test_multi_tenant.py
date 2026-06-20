@@ -339,8 +339,9 @@ def test_webhook_notifies_tenant_on_completion(webhook_client, monkeypatch) -> N
         assert len(fake_email.sent) == 1
         notification = fake_email.sent[0]
         assert notification["to"] == "dona@example.com"
-        assert "Natália" in notification["subject"]
+        assert notification["subject"].startswith("[Novo Lead Triagem]")
         assert "5571999999999" in notification["body"]
+        assert "Ficha de Triagem - Assistente Virtual" in notification["body"]
 
     asyncio.run(run())
 
