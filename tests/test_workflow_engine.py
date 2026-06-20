@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.database import Base
 from app.helpers import conversation_helper, workflow_engine
 from app.models import Conversation
+from app.seed import TRIAGEM_PERSONAL_V2
 
 # Árvore com ramificação (espelha a triagem da Natália, reduzida).
 TRIAGEM = {
@@ -177,3 +178,93 @@ def test_stale_node_id_restarts_flow(db: Session) -> None:
     assert result.reply == "Como é o seu nome?"
     assert result.current_node_id == "ask_name"
     assert result.completed is False
+
+
+def test_show_options_false_does_not_append_numbered_list(db: Session) -> None:
+    workflow = {
+        "start": "pick",
+        "nodes": {
+            "pick": {
+                "type": "choice",
+                "prompt": "Escolha:\n1️⃣ Opção A\n2️⃣ Opção B",
+                "collect": "x",
+                "show_options": False,
+                "options": [
+                    {"label": "Opção A", "next": "done"},
+                    {"label": "Opção B", "next": "done"},
+                ],
+            },
+            "done": {"type": "terminal"},
+        },
+    }
+    conversation = _conversation(db)
+    result = workflow_engine.handle_message(
+        db, conversation=conversation, workflow=workflow, message="oi"
+    )
+    assert result.reply == "Escolha:\n1️⃣ Opção A\n2️⃣ Opção B"
+    assert "\n1. Opção A" not in result.reply
+
+
+def test_prompt_interpolates_collected_answers(db: Session) -> None:
+    workflow = {
+        "start": "ask_name",
+        "nodes": {
+            "ask_name": {
+                "type": "text",
+                "prompt": "Nome?",
+                "collect": "nome",
+                "next": "confirm",
+            },
+            "confirm": {
+                "type": "choice",
+                "prompt": "Olá, {nome}! Confirma?",
+                "show_options": False,
+                "options": [{"label": "Sim", "next": "done"}],
+            },
+            "done": {"type": "terminal", "reply": "Até, {nome}!"},
+        },
+    }
+    conversation = _conversation(db)
+    workflow_engine.handle_message(
+        db, conversation=conversation, workflow=workflow, message="oi"
+    )
+    workflow_engine.handle_message(
+        db, conversation=conversation, workflow=workflow, message="Ana"
+    )
+    result = workflow_engine.handle_message(
+        db, conversation=conversation, workflow=workflow, message="1"
+    )
+    assert result.reply == "Até, Ana!"
+    assert result.completed is True
+
+
+def test_triagem_v2_personal_flow_with_confirmation(db: Session) -> None:
+    conversation = _conversation(db)
+    workflow_engine.handle_message(
+        db, conversation=conversation, workflow=TRIAGEM_PERSONAL_V2, message="oi"
+    )
+    workflow_engine.handle_message(
+        db, conversation=conversation, workflow=TRIAGEM_PERSONAL_V2, message="Marina"
+    )
+    workflow_engine.handle_message(
+        db, conversation=conversation, workflow=TRIAGEM_PERSONAL_V2, message="32"
+    )
+    workflow_engine.handle_message(
+        db, conversation=conversation, workflow=TRIAGEM_PERSONAL_V2, message="1"
+    )
+    confirm = workflow_engine.handle_message(
+        db, conversation=conversation, workflow=TRIAGEM_PERSONAL_V2, message="2"
+    )
+    assert "Nome:* Marina" in confirm.reply
+    assert "Presencial" in confirm.reply
+    assert confirm.current_node_id == "confirm_personal"
+
+    result = workflow_engine.handle_message(
+        db, conversation=conversation, workflow=TRIAGEM_PERSONAL_V2, message="1"
+    )
+    assert result.completed is True
+    assert "Prontinho!" in result.reply
+    assert conversation.answers["nome"] == "Marina"
+    assert conversation.answers["idade"] == "32"
+    assert conversation.answers["interesse"] == "Aulas de Personal"
+    assert conversation.answers["modalidade"] == "Presencial"

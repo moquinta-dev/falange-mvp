@@ -24,6 +24,41 @@ def _humanize(key: str) -> str:
     return key.replace("_", " ").strip().capitalize()
 
 
+def _is_triagem_lead(answers: dict | None) -> bool:
+    return bool(answers and answers.get("nome"))
+
+
+def _formato_foco(answers: dict) -> str:
+    return str(answers.get("modalidade") or answers.get("objetivo") or "—")
+
+
+def build_email_subject(
+    *,
+    tenant_name: str,
+    answers: dict | None,
+) -> str:
+    if _is_triagem_lead(answers):
+        nome = answers["nome"]
+        interesse = answers.get("interesse") or "Triagem"
+        return f"[Novo Lead Triagem] - {nome} - {interesse}"
+    return f"Nova triagem concluída — {tenant_name}"
+
+
+def build_triagem_email_body(*, lead_phone: str, answers: dict) -> str:
+    idade = answers.get("idade") or answers.get("faixa_etaria") or "—"
+    return "\n".join(
+        [
+            "Ficha de Triagem - Assistente Virtual",
+            "",
+            f"* Nome: {answers.get('nome', '—')}",
+            f"* Idade: {idade}",
+            f"* Interesse: {answers.get('interesse', '—')}",
+            f"* Formato/Foco: {_formato_foco(answers)}",
+            f"* WhatsApp do Cliente: {lead_phone}",
+        ]
+    )
+
+
 def build_email_body(
     *,
     tenant_name: str,
@@ -31,6 +66,9 @@ def build_email_body(
     summary: str | None,
     answers: dict | None,
 ) -> str:
+    if _is_triagem_lead(answers):
+        return build_triagem_email_body(lead_phone=lead_phone, answers=answers)
+
     lines = [
         f"Uma nova triagem foi concluída para {tenant_name}.",
         "",
@@ -76,7 +114,7 @@ def notify_tenant_of_completion(
         )
         return False
 
-    subject = f"Nova triagem concluída — {tenant_name}"
+    subject = build_email_subject(tenant_name=tenant_name, answers=answers)
     body = build_email_body(
         tenant_name=tenant_name,
         lead_phone=lead_phone,

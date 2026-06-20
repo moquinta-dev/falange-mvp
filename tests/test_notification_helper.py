@@ -95,7 +95,7 @@ class _BrokenEmailClient:
         raise RuntimeError("smtp down")
 
 
-def test_notify_sends_email_with_summary() -> None:
+def test_notify_sends_email_with_triagem_structure() -> None:
     client = _RecordingEmailClient()
 
     sent = notification_helper.notify_tenant_of_completion(
@@ -104,17 +104,29 @@ def test_notify_sends_email_with_summary() -> None:
         notify_channel="email",
         notify_target="dona@example.com",
         lead_phone="5571999999999",
-        summary="Show! Deixa eu confirmar:\n\n- Nome: Marina",
-        answers={"nome": "Marina"},
+        summary=None,
+        answers={
+            "nome": "Marina",
+            "idade": "32",
+            "interesse": "Aulas de Personal",
+            "modalidade": "Presencial",
+        },
     )
 
     assert sent is True
     assert len(client.sent) == 1
     message = client.sent[0]
     assert message["to"] == "dona@example.com"
-    assert "Natália" in message["subject"]
-    assert "5571999999999" in message["body"]
-    assert "Nome: Marina" in message["body"]
+    assert message["subject"] == "[Novo Lead Triagem] - Marina - Aulas de Personal"
+    assert message["body"] == (
+        "Ficha de Triagem - Assistente Virtual\n"
+        "\n"
+        "* Nome: Marina\n"
+        "* Idade: 32\n"
+        "* Interesse: Aulas de Personal\n"
+        "* Formato/Foco: Presencial\n"
+        "* WhatsApp do Cliente: 5571999999999"
+    )
 
 
 def test_notify_skips_without_target() -> None:
@@ -162,13 +174,42 @@ def test_notify_swallows_send_errors() -> None:
     assert sent is False
 
 
-def test_build_email_body_falls_back_to_answers() -> None:
+def test_build_email_body_falls_back_to_answers_for_non_triagem() -> None:
     body = notification_helper.build_email_body(
-        tenant_name="Natália",
+        tenant_name="Falangelabs",
         lead_phone="5571999999999",
         summary=None,
-        answers={"nome": "Marina", "faixa_etaria": "30"},
+        answers={"business": "Academia", "goal": "Agendamento"},
     )
 
-    assert "Nome: Marina" in body
-    assert "Faixa etaria: 30" in body
+    assert "Business: Academia" in body
+    assert "Goal: Agendamento" in body
+
+
+def test_build_triagem_email_uses_objetivo_as_formato_foco() -> None:
+    body = notification_helper.build_triagem_email_body(
+        lead_phone="5571888777777",
+        answers={
+            "nome": "Ana",
+            "idade": "28",
+            "interesse": "Consultoria Online",
+            "objetivo": "Fortalecimento + Corrida",
+        },
+    )
+
+    assert "* Formato/Foco: Fortalecimento + Corrida" in body
+
+
+def test_build_triagem_email_v1_faixa_etaria() -> None:
+    body = notification_helper.build_triagem_email_body(
+        lead_phone="5571999999999",
+        answers={
+            "nome": "Marina",
+            "faixa_etaria": "30-40",
+            "interesse": "Aulas de Yoga",
+            "modalidade": "Particular",
+        },
+    )
+
+    assert "* Idade: 30-40" in body
+    assert "* Formato/Foco: Particular" in body

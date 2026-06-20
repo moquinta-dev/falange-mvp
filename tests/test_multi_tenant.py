@@ -339,8 +339,9 @@ def test_webhook_notifies_tenant_on_completion(webhook_client, monkeypatch) -> N
         assert len(fake_email.sent) == 1
         notification = fake_email.sent[0]
         assert notification["to"] == "dona@example.com"
-        assert "Natália" in notification["subject"]
+        assert notification["subject"].startswith("[Novo Lead Triagem]")
         assert "5571999999999" in notification["body"]
+        assert "Ficha de Triagem - Assistente Virtual" in notification["body"]
 
     asyncio.run(run())
 
@@ -381,6 +382,10 @@ def test_seed_is_idempotent(session_factory: sessionmaker, monkeypatch) -> None:
             _FALANGE_PHONE_ID,
             _NATALIA_PHONE_ID,
         }
-        assert {w.key for w in workflows} == {"discovery_v1", "triagem_personal_v1"}
+        assert {w.key for w in workflows} == {
+            "discovery_v1",
+            "triagem_personal_v1",
+            "triagem_personal_v2",
+        }
     finally:
         db.close()

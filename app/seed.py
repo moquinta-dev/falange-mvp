@@ -154,6 +154,159 @@ TRIAGEM_PERSONAL_V1: dict[str, Any] = {
 }
 
 
+# Triagem v2 da Natália — mensagens enriquecidas, confirmação antes do encerramento.
+TRIAGEM_PERSONAL_V2: dict[str, Any] = {
+    "start": "ask_name",
+    "nodes": {
+        "ask_name": {
+            "type": "text",
+            "prompt": (
+                "Olá! Eu sou a *Assistente Virtual* da Natália🌟 Que alegria ter você "
+                "por aqui!\n\nPara começarmos o seu atendimento de forma rápida, por "
+                "favor, me diga: *qual é o seu nome?*"
+            ),
+            "collect": "nome",
+            "next": "ask_age",
+        },
+        "ask_age": {
+            "type": "text",
+            "prompt": (
+                "Prazer em te conhecer! 🌷\n\nPara ajudar a nossa equipe a entender "
+                "melhor o seu perfil, qual é a sua *idade*?"
+            ),
+            "collect": "idade",
+            "next": "ask_interest",
+        },
+        "ask_interest": {
+            "type": "choice",
+            "prompt": (
+                "Perfeito! Para eu te direcionar para o atendimento correto, me conta: "
+                "em qual dessas opções você tem interesse hoje?\n\n"
+                "1️⃣ *Aulas de Personal* (Acompanhamento individual) 🏋️‍♀️\n"
+                "2️⃣ *Aulas de Yoga* (Equilíbrio, mobilidade e respiração) 🧘🏻‍♀️\n"
+                "3️⃣ *Consultoria Online* (Treinos personalizados de onde quiser) 📲\n\n"
+                "Por favor, digite apenas o *número* da opção desejada."
+            ),
+            "collect": "interesse",
+            "show_options": False,
+            "options": [
+                {"label": "Aulas de Personal", "next": "personal_mod"},
+                {"label": "Aulas de Yoga", "next": "yoga_mod"},
+                {"label": "Consultoria Online", "next": "consultoria_obj"},
+            ],
+        },
+        "personal_mod": {
+            "type": "choice",
+            "prompt": (
+                "Excelente escolha! Ter um acompanhamento de perto faz toda a "
+                "diferença para os seus resultados. 🚀\n\nComo você prefere realizar "
+                "as suas aulas de Personal?\n\n"
+                "1️⃣ *Online* (Treino ao vivo por videochamada, de onde você estiver) "
+                "👩🏻‍💻\n"
+                "2️⃣ *Presencial* (Atendimento exclusivo e presencial) 👟\n\n"
+                "Por favor, digite apenas o *número* da opção desejada."
+            ),
+            "collect": "modalidade",
+            "show_options": False,
+            "options": [
+                {"label": "Online", "next": "confirm_personal"},
+                {"label": "Presencial", "next": "confirm_personal"},
+            ],
+        },
+        "yoga_mod": {
+            "type": "choice",
+            "prompt": (
+                "Excelente escolha! O Yoga é incrível para trazer mais equilíbrio, "
+                "consciência corporal e bem-estar para o seu dia a dia. 🧘🏻‍♀️✨\n\n"
+                "Como você prefere realizar as suas práticas?\n\n"
+                "1️⃣ *Particular* (Atendimento exclusivo e 100% personalizado) 🕉️\n"
+                "2️⃣ *Em Grupo* (Prática coletiva com 2 a 4 pessoas) 👥\n\n"
+                "Por favor, digite apenas o *número* da opção desejada."
+            ),
+            "collect": "modalidade",
+            "show_options": False,
+            "options": [
+                {"label": "Particular", "next": "confirm_yoga"},
+                {"label": "Em Grupo", "next": "confirm_yoga"},
+            ],
+        },
+        "consultoria_obj": {
+            "type": "choice",
+            "prompt": (
+                "Excelente escolha! 🚀 E qual é o seu principal objetivo no momento?\n\n"
+                "1️⃣ *Fortalecimento* (Mais força, tônus muscular e definição) 💪\n"
+                "2️⃣ *Fortalecimento + Corrida* (Treinos de força + iniciação na "
+                "corrida) 🏃🏻‍♀️💨\n\n"
+                "Por favor, digite apenas o *número* da opção desejada."
+            ),
+            "collect": "objetivo",
+            "show_options": False,
+            "options": [
+                {"label": "Fortalecimento", "next": "confirm_consultoria"},
+                {"label": "Fortalecimento + Corrida", "next": "confirm_consultoria"},
+            ],
+        },
+        "confirm_personal": {
+            "type": "choice",
+            "prompt": (
+                "Show! Já anotei tudo por aqui. 📝 Só para confirmar se o seu cadastro "
+                "está certinho:\n\n"
+                "👋 *Nome:* {nome}\n"
+                "🎂 *Idade:* {idade}\n"
+                "🎯 *Interesse:* Aulas de Personal ({modalidade})\n\n"
+                "Se estiver tudo correto, digite *1*.\n\n"
+                "Assim que você confirmar, eu envio a sua ficha direto para Natália e "
+                "ela entrará em contato com você para conversarem melhor sobre os seus "
+                "objetivos! ⚡"
+            ),
+            "show_options": False,
+            "options": [{"label": "Confirmado", "next": "done"}],
+        },
+        "confirm_yoga": {
+            "type": "choice",
+            "prompt": (
+                "Show! Já anotei tudo por aqui. 📝 Só para confirmar se o seu cadastro "
+                "está certinho:\n\n"
+                "👋 *Nome:* {nome}\n"
+                "🎂 *Idade:* {idade}\n"
+                "🎯 *Interesse:* Aulas de Yoga ({modalidade})\n\n"
+                "Se estiver tudo correto, digite *1*.\n\n"
+                "Assim que você confirmar, eu envio a sua ficha direto para Natália e "
+                "ela entrará em contato com você para conversarem melhor sobre as "
+                "práticas! ⚡"
+            ),
+            "show_options": False,
+            "options": [{"label": "Confirmado", "next": "done"}],
+        },
+        "confirm_consultoria": {
+            "type": "choice",
+            "prompt": (
+                "Show! Já anotei tudo por aqui. 📝 Só para confirmar se o seu cadastro "
+                "está certinho:\n\n"
+                "👋 *Nome:* {nome}\n"
+                "🎂 *Idade:* {idade}\n"
+                "🎯 *Interesse:* Consultoria Online\n"
+                "🔥 *Foco:* {objetivo}\n\n"
+                "Se estiver tudo correto, digite *1*.\n\n"
+                "Assim que você confirmar, eu envio a sua ficha direto para Natália e "
+                "ela entrará em contato com você para dar continuidade! ⚡"
+            ),
+            "show_options": False,
+            "options": [{"label": "Confirmado", "next": "done"}],
+        },
+        "done": {
+            "type": "terminal",
+            "reply": (
+                "Prontinho! Os seus dados já foram enviados com sucesso para Natália. "
+                "📨✨\n\nMuito em breve ela entrará em contato com você diretamente para "
+                "alinhar os próximos passos e entender tudinho sobre o que você busca.\n\n"
+                "Tenha um excelente dia! 🏋️‍♀️🙏🏻"
+            ),
+        },
+    },
+}
+
+
 def seed(db: Session) -> None:
     discovery = workflow_helper.upsert_workflow(
         db,
@@ -166,6 +319,12 @@ def seed(db: Session) -> None:
         key="triagem_personal_v1",
         name="Natália — triagem de novos alunos",
         definition=TRIAGEM_PERSONAL_V1,
+    )
+    workflow_helper.upsert_workflow(
+        db,
+        key="triagem_personal_v2",
+        name="Natália — triagem de novos alunos (v2)",
+        definition=TRIAGEM_PERSONAL_V2,
     )
 
     falange_phone = os.getenv("FALANGE_WHATSAPP_PHONE_NUMBER_ID")
