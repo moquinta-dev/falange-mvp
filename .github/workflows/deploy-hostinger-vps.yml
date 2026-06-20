@@ -225,6 +225,11 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ vars.SMTP_FROM || secrets.SMTP_FROM }}
           SMTP_USE_SSL: ${{ vars.SMTP_USE_SSL || secrets.SMTP_USE_SSL }}
+          IDLE_SWEEP_ENABLED: ${{ vars.IDLE_SWEEP_ENABLED || secrets.IDLE_SWEEP_ENABLED }}
+          IDLE_NUDGE_AFTER_MINUTES: ${{ vars.IDLE_NUDGE_AFTER_MINUTES || secrets.IDLE_NUDGE_AFTER_MINUTES }}
+          IDLE_ABANDON_AFTER_NUDGE_MINUTES: ${{ vars.IDLE_ABANDON_AFTER_NUDGE_MINUTES || secrets.IDLE_ABANDON_AFTER_NUDGE_MINUTES }}
+          IDLE_SWEEP_BATCH_SIZE: ${{ vars.IDLE_SWEEP_BATCH_SIZE || secrets.IDLE_SWEEP_BATCH_SIZE }}
+          IDLE_WHATSAPP_WINDOW_HOURS: ${{ vars.IDLE_WHATSAPP_WINDOW_HOURS || secrets.IDLE_WHATSAPP_WINDOW_HOURS }}
         run: |
           set -euo pipefail
 
@@ -249,6 +254,11 @@ jobs:
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD:-}"
             printf 'SMTP_FROM=%s\n' "${SMTP_FROM:-}"
             printf 'SMTP_USE_SSL=%s\n' "${SMTP_USE_SSL:-true}"
+            printf 'IDLE_SWEEP_ENABLED=%s\n' "${IDLE_SWEEP_ENABLED:-false}"
+            printf 'IDLE_NUDGE_AFTER_MINUTES=%s\n' "${IDLE_NUDGE_AFTER_MINUTES:-20}"
+            printf 'IDLE_ABANDON_AFTER_NUDGE_MINUTES=%s\n' "${IDLE_ABANDON_AFTER_NUDGE_MINUTES:-15}"
+            printf 'IDLE_SWEEP_BATCH_SIZE=%s\n' "${IDLE_SWEEP_BATCH_SIZE:-100}"
+            printf 'IDLE_WHATSAPP_WINDOW_HOURS=%s\n' "${IDLE_WHATSAPP_WINDOW_HOURS:-24}"
             traefik_docs_basic_auth_users="${TRAEFIK_DOCS_BASIC_AUTH_USERS//$/$$}"
             printf 'TRAEFIK_DOCS_BASIC_AUTH_USERS=%s\n' "$traefik_docs_basic_auth_users"
           } > "$deploy_env"

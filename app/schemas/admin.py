@@ -47,3 +47,10 @@ class TenantResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class IdleSweepResponse(BaseModel):
+    nudges_sent: int
+    abandoned: int
+    skipped_outside_whatsapp_window: int
+    errors: int

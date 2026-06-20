@@ -203,3 +203,31 @@ cd /opt/falange-mvp
 docker compose --env-file .env.deploy -f docker-compose.yml pull
 docker compose --env-file .env.deploy -f docker-compose.yml up -d
 ```
+
+## Sweep de conversas inativas
+
+Tenants com workflow data-driven (ex.: Natália) podem encerrar automaticamente
+triagens abandonadas:
+
+1. Após **20 min** sem resposta do usuário → lembrete WhatsApp (*“Digite 1…”*).
+2. Após **+15 min** sem resposta ao lembrete → estado `abandoned` (answers
+   congelados) + mensagem de despedida.
+
+Variáveis em `.env.deploy` (backend):
+
+```env
+IDLE_SWEEP_ENABLED=true
+IDLE_NUDGE_AFTER_MINUTES=20
+IDLE_ABANDON_AFTER_NUDGE_MINUTES=15
+IDLE_SWEEP_BATCH_SIZE=100
+IDLE_WHATSAPP_WINDOW_HOURS=24
+```
+
+Cron na VPS (a cada 5 min), usando o mesmo `ADMIN_API_TOKEN`:
+
+```bash
+*/5 * * * * curl -sf -X POST "https://<VPS_APP_DOMAIN>/admin/conversations/sweep-idle" \
+  -H "X-API-Key: $ADMIN_API_TOKEN" >/dev/null
+```
+
+O endpoint exige autenticação admin; é idempotente por conversa.

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Conversation, Message
 
-_TERMINAL_STATES = ("completed", "handoff")
+_TERMINAL_STATES = ("completed", "handoff", "abandoned")
 
 
 def _is_handed_off(conversation: Conversation) -> bool:
@@ -25,6 +25,7 @@ def _is_terminal(conversation: Conversation) -> bool:
         conversation.state in _TERMINAL_STATES
         or conversation.handed_off_at is not None
         or conversation.completed_at is not None
+        or conversation.abandoned_at is not None
     )
 
 

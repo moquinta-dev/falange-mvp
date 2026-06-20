@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from app.core.auth import require_admin_api_key
 from app.core.database import get_db
 from app.helpers import tenant_helper, workflow_engine, workflow_helper
+from app.helpers.idle_helper import sweep_idle_conversations
+from app.helpers.whatsapp_cloud_client import WhatsAppCloudClient, get_whatsapp_client
+from app.core.settings import Settings, get_settings
 from app.schemas.admin import (
+    IdleSweepResponse,
     TenantResponse,
     TenantUpsert,
     WorkflowResponse,
@@ -87,4 +91,28 @@ async def upsert_tenant(
         notify_channel=payload.notify_channel,
         notify_target=payload.notify_target,
         active=payload.active,
+    )
+
+
+@router.post("/conversations/sweep-idle", response_model=IdleSweepResponse)
+async def sweep_idle_conversations_endpoint(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    whatsapp_client: WhatsAppCloudClient = Depends(get_whatsapp_client),
+):
+    """Varre conversas inativas: lembrete e abandono automático.
+
+    Destinado a cron externo (ex.: a cada 5 min na VPS). Idempotente por conversa.
+    """
+
+    result = sweep_idle_conversations(
+        db,
+        settings=settings,
+        whatsapp_client=whatsapp_client,
+    )
+    return IdleSweepResponse(
+        nudges_sent=result.nudges_sent,
+        abandoned=result.abandoned,
+        skipped_outside_whatsapp_window=result.skipped_outside_whatsapp_window,
+        errors=result.errors,
     )

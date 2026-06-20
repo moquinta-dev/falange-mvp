@@ -35,6 +35,7 @@ from app.models import Conversation
 
 COMPLETED_STATE = "completed"
 HANDOFF_STATE = "handoff"
+ABANDONED_STATE = "abandoned"
 
 SUMMARY_HEADER = "Show! Deixa eu confirmar o que entendi:"
 COMPLETED_REPLY = (
@@ -188,6 +189,9 @@ def handle_message(
         external_message_id=external_message_id,
     )
 
+    if conversation.state == ABANDONED_STATE:
+        conversation_helper.prepare_restart_after_abandon(db, conversation=conversation)
+
     decision = _decide(
         workflow,
         current_node_id=conversation.current_node_id,
@@ -218,6 +222,61 @@ def handle_message(
         current_node_id=decision.current_node_id,
         completed=decision.completed,
         summary=decision.summary,
+    )
+
+
+def reprompt_current(
+    db: Session,
+    *,
+    conversation: Conversation,
+    workflow: dict[str, Any],
+    message: str,
+    external_message_id: str | None = None,
+) -> WorkflowResult:
+    """Reapresenta o nó atual sem consumir a mensagem (retomada pós-lembrete idle)."""
+
+    nodes = workflow.get("nodes")
+    start_id = workflow.get("start")
+    if not isinstance(nodes, dict) or start_id not in nodes:
+        raise WorkflowError("workflow inválido: 'start'/'nodes' ausentes")
+
+    conversation_helper.add_message(
+        db,
+        conversation=conversation,
+        direction="inbound",
+        content=message,
+        external_message_id=external_message_id,
+    )
+
+    node_id = conversation.current_node_id or start_id
+    answers = dict(conversation.answers or {})
+    node = nodes.get(node_id)
+    if node is None or node.get("type") == "terminal":
+        node_id = start_id
+        answers = {}
+
+    reply = _render_node(nodes[node_id], answers)
+
+    conversation_helper.update_workflow_state(
+        db,
+        conversation=conversation,
+        current_node_id=node_id,
+        answers=answers,
+        state=node_id,
+    )
+    conversation_helper.add_message(
+        db,
+        conversation=conversation,
+        direction="outbound",
+        content=reply,
+    )
+
+    return WorkflowResult(
+        conversation_id=conversation.id,
+        reply=reply,
+        state=node_id,
+        current_node_id=node_id,
+        completed=False,
     )
 
 

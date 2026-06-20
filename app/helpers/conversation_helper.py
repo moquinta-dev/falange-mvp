@@ -132,6 +132,75 @@ def mark_handed_off(db: Session, *, conversation: Conversation) -> Conversation:
     return conversation
 
 
+def mark_idle_nudge_sent(
+    db: Session,
+    *,
+    conversation: Conversation,
+    content: str,
+) -> Conversation:
+    conversation.idle_nudge_sent_at = _utc_now()
+    db.add(conversation)
+    db.commit()
+    add_message(
+        db,
+        conversation=conversation,
+        direction="outbound",
+        content=content,
+    )
+    db.refresh(conversation)
+    return conversation
+
+
+def clear_idle_nudge(db: Session, *, conversation: Conversation) -> Conversation:
+    if conversation.idle_nudge_sent_at is not None:
+        conversation.idle_nudge_sent_at = None
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+    return conversation
+
+
+def mark_abandoned(
+    db: Session,
+    *,
+    conversation: Conversation,
+    farewell_content: str | None,
+) -> Conversation:
+    now = _utc_now()
+    conversation.state = "abandoned"
+    conversation.abandoned_at = now
+    conversation.idle_nudge_sent_at = None
+    db.add(conversation)
+    db.commit()
+    if farewell_content:
+        add_message(
+            db,
+            conversation=conversation,
+            direction="outbound",
+            content=farewell_content,
+        )
+    db.refresh(conversation)
+    return conversation
+
+
+def prepare_restart_after_abandon(
+    db: Session,
+    *,
+    conversation: Conversation,
+) -> Conversation:
+    """Limpa marcos de abandono para reiniciar triagem na próxima mensagem."""
+
+    conversation.state = "new"
+    conversation.current_node_id = None
+    conversation.answers = {}
+    conversation.abandoned_at = None
+    conversation.idle_nudge_sent_at = None
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
 def list_recent_messages(
     db: Session,
     *,
