@@ -382,6 +382,10 @@ def test_seed_is_idempotent(session_factory: sessionmaker, monkeypatch) -> None:
             _FALANGE_PHONE_ID,
             _NATALIA_PHONE_ID,
         }
-        assert {w.key for w in workflows} == {"discovery_v1", "triagem_personal_v1"}
+        assert {w.key for w in workflows} == {
+            "discovery_v1",
+            "triagem_personal_v1",
+            "triagem_personal_v2",
+        }
     finally:
         db.close()
