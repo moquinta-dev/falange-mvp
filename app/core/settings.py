@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     # 465 = SSL implícito (SMTP_SSL); 587 = STARTTLS.
     smtp_use_ssl: bool = True
+    # Alerta interno quando um lead conclui o wizard da landing page.
+    wizard_lead_notify_email: str = "support@falangelabs.io"
 
     # Sweep de conversas inativas (workflow data-driven). Desligado por padrão.
     idle_sweep_enabled: bool = False

@@ -225,6 +225,7 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ vars.SMTP_FROM || secrets.SMTP_FROM }}
           SMTP_USE_SSL: ${{ vars.SMTP_USE_SSL || secrets.SMTP_USE_SSL }}
+          WIZARD_LEAD_NOTIFY_EMAIL: ${{ vars.WIZARD_LEAD_NOTIFY_EMAIL || secrets.WIZARD_LEAD_NOTIFY_EMAIL }}
           IDLE_SWEEP_ENABLED: ${{ vars.IDLE_SWEEP_ENABLED || secrets.IDLE_SWEEP_ENABLED }}
           IDLE_NUDGE_AFTER_MINUTES: ${{ vars.IDLE_NUDGE_AFTER_MINUTES || secrets.IDLE_NUDGE_AFTER_MINUTES }}
           IDLE_ABANDON_AFTER_NUDGE_MINUTES: ${{ vars.IDLE_ABANDON_AFTER_NUDGE_MINUTES || secrets.IDLE_ABANDON_AFTER_NUDGE_MINUTES }}
@@ -254,6 +255,7 @@ jobs:
             printf 'SMTP_PASSWORD=%s\n' "${SMTP_PASSWORD:-}"
             printf 'SMTP_FROM=%s\n' "${SMTP_FROM:-}"
             printf 'SMTP_USE_SSL=%s\n' "${SMTP_USE_SSL:-true}"
+            printf 'WIZARD_LEAD_NOTIFY_EMAIL=%s\n' "${WIZARD_LEAD_NOTIFY_EMAIL:-support@falangelabs.io}"
             printf 'IDLE_SWEEP_ENABLED=%s\n' "${IDLE_SWEEP_ENABLED:-false}"
             printf 'IDLE_NUDGE_AFTER_MINUTES=%s\n' "${IDLE_NUDGE_AFTER_MINUTES:-20}"
             printf 'IDLE_ABANDON_AFTER_NUDGE_MINUTES=%s\n' "${IDLE_ABANDON_AFTER_NUDGE_MINUTES:-15}"
