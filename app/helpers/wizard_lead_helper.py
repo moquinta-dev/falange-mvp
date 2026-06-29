@@ -58,7 +58,12 @@ def notify_team_of_wizard_lead(
         return False
 
     if not email_client.is_configured:
-        logger.info("SMTP não configurado; notificação de wizard lead ignorada")
+        logger.warning(
+            "SMTP não configurado; notificação de wizard lead ignorada "
+            "(lead_id=%s, destino=%s)",
+            lead_id,
+            notify_target,
+        )
         return False
 
     subject = build_wizard_lead_email_subject(segment=segment, name=name)

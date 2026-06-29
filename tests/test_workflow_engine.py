@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.database import Base
 from app.helpers import conversation_helper, workflow_engine
 from app.models import Conversation
-from app.seed import TRIAGEM_PERSONAL_V2
+from app.seed import DISCOVERY_V1, TRIAGEM_PERSONAL_V2
 
 # Árvore com ramificação (espelha a triagem da Natália, reduzida).
 TRIAGEM = {
@@ -268,3 +268,67 @@ def test_triagem_v2_personal_flow_with_confirmation(db: Session) -> None:
     assert conversation.answers["idade"] == "32"
     assert conversation.answers["interesse"] == "Aulas de Personal"
     assert conversation.answers["modalidade"] == "Presencial"
+
+_WIZARD_MESSAGE = """Olá! Acabei de criar meu agente na Falange Labs.
+
+Segmento: Clínica
+Pergunta do cliente: Qual o horário?
+Resposta do meu agente: Das 8h às 18h.
+
+Meu WhatsApp: 71999998888
+Nome: Marcos
+
+Quero receber esse fluxo e saber mais sobre o piloto."""
+
+
+def _send_discovery(db: Session, conversation: Conversation, text: str):
+    return workflow_engine.handle_message(
+        db, conversation=conversation, workflow=DISCOVERY_V1, message=text
+    )
+
+
+def test_wizard_lead_gets_personalized_contact_question(db: Session) -> None:
+    conversation = _conversation(db)
+    _send_discovery(db, conversation, _WIZARD_MESSAGE)
+    _send_discovery(db, conversation, "Tenho uma clínica de estética")
+    _send_discovery(db, conversation, "WhatsApp")
+    _send_discovery(db, conversation, "Demoro para responder")
+    _send_discovery(db, conversation, "Agendar consultas")
+    result = _send_discovery(db, conversation, "20 por dia")
+
+    assert conversation.answers.get("wizard_name") == "Marcos"
+    assert "Marcos" in result.reply
+    assert "qual é o seu nome" not in result.reply
+    assert "melhor horário" in result.reply
+
+
+def test_wizard_contact_answer_combines_name_and_schedule(db: Session) -> None:
+    conversation = _conversation(db)
+    _send_discovery(db, conversation, _WIZARD_MESSAGE)
+    _send_discovery(db, conversation, "Tenho uma clínica")
+    _send_discovery(db, conversation, "WhatsApp")
+    _send_discovery(db, conversation, "Demoro para responder")
+    _send_discovery(db, conversation, "Agendar consultas")
+    _send_discovery(db, conversation, "20 por dia")
+    result = _send_discovery(db, conversation, "depois das 18h")
+
+    assert conversation.answers["contact"] == "Marcos, depois das 18h"
+    assert result.completed is True
+    assert "Marcos, depois das 18h" in result.reply
+
+
+def test_secondary_cta_keeps_default_contact_question(db: Session) -> None:
+    conversation = _conversation(db)
+    _send_discovery(
+        db,
+        conversation,
+        "Olá! Quero falar com o assistente virtual da Falange Labs.",
+    )
+    _send_discovery(db, conversation, "Tenho uma loja")
+    _send_discovery(db, conversation, "WhatsApp")
+    _send_discovery(db, conversation, "Demoro para responder")
+    _send_discovery(db, conversation, "Qualificar clientes")
+    result = _send_discovery(db, conversation, "30 por dia")
+
+    assert "qual é o seu nome" in result.reply
+    assert "Marcos" not in result.reply

@@ -14,7 +14,7 @@ from unicodedata import normalize
 
 from sqlalchemy.orm import Session
 
-from app.helpers import conversation_helper, lead_helper
+from app.helpers import conversation_helper, lead_helper, wizard_message_helper
 
 
 @dataclass(frozen=True)
@@ -86,10 +86,7 @@ DISCOVERY_STEPS: tuple[DiscoveryStep, ...] = (
         key="contact",
         state="collecting_contact",
         label="Contato e melhor horário",
-        question=(
-            "Perfeito. Por último, qual é o seu nome e o melhor horário para a "
-            "nossa equipe falar com você?"
-        ),
+        question=wizard_message_helper.CONTACT_QUESTION_DEFAULT,
     ),
 )
 
@@ -180,10 +177,23 @@ def handle_message(
         external_message_id=external_message_id,
     )
 
+    if conversation.state == INITIAL_STATE:
+        wizard_data = wizard_message_helper.parse_wizard_whatsapp_message(message)
+        if wizard_data:
+            merged = dict(conversation.answers or {})
+            merged.update(wizard_data)
+            conversation.answers = merged
+            db.add(conversation)
+            db.commit()
+            db.refresh(conversation)
+
+    wizard_name = (conversation.answers or {}).get("wizard_name")
+
     decision = _respond(
         conversation.state,
         message,
         answers=_recent_answers(db, conversation),
+        wizard_name=wizard_name,
     )
     conversation_helper.update_conversation_state(
         db,
@@ -213,6 +223,7 @@ def _respond(
     message: str,
     *,
     answers: list[str] | None = None,
+    wizard_name: str | None = None,
 ) -> _AgentDecision:
     answers = answers or []
     normalized_message = _normalize(message)
@@ -234,7 +245,7 @@ def _respond(
 
     step = _STEP_BY_STATE.get(current_state)
     if step is not None:
-        return _advance_from_step(step, message, answers)
+        return _advance_from_step(step, message, answers, wizard_name=wizard_name)
 
     if current_state == CONFIRMATION_STATE:
         return _handle_confirmation(normalized_message)
@@ -258,10 +269,17 @@ def _advance_from_step(
     step: DiscoveryStep,
     message: str,
     answers: list[str],
+    *,
+    wizard_name: str | None = None,
 ) -> _AgentDecision:
     if not message.strip():
+        question = (
+            wizard_message_helper.contact_question(wizard_name)
+            if step.key == "contact"
+            else step.question
+        )
         return _AgentDecision(
-            reply=REASK_PREFIX + step.question,
+            reply=REASK_PREFIX + question,
             state=step.state,
             intent="discovery",
         )
@@ -269,13 +287,18 @@ def _advance_from_step(
     index = DISCOVERY_STEPS.index(step)
     if index + 1 < len(DISCOVERY_STEPS):
         next_step = DISCOVERY_STEPS[index + 1]
+        reply = (
+            wizard_message_helper.contact_question(wizard_name)
+            if next_step.key == "contact"
+            else next_step.question
+        )
         return _AgentDecision(
-            reply=next_step.question,
+            reply=reply,
             state=next_step.state,
             intent="discovery",
         )
 
-    summary = _format_summary(answers)
+    summary = _format_summary(answers, wizard_name=wizard_name)
     return _AgentDecision(
         reply=f"{summary}\n\n{CONFIRM_PROMPT}",
         state=CONFIRMATION_STATE,
@@ -307,8 +330,13 @@ def _handle_confirmation(normalized_message: str) -> _AgentDecision:
     )
 
 
-def _format_summary(answers: list[str]) -> str:
-    tail = list(answers)[-len(DISCOVERY_STEPS):]
+def _format_summary(answers: list[str], *, wizard_name: str | None = None) -> str:
+    tail = list(answers)[-len(DISCOVERY_STEPS) :]
+    if wizard_name and len(tail) == len(DISCOVERY_STEPS):
+        tail[-1] = wizard_message_helper.normalize_contact_answer(
+            tail[-1],
+            wizard_name,
+        )
     lines = [SUMMARY_HEADER, ""]
     for offset, step in enumerate(DISCOVERY_STEPS):
         value = tail[offset].strip() if offset < len(tail) and tail[offset].strip() else _NOT_INFORMED
@@ -383,7 +411,12 @@ def _recent_answers(db: Session, conversation) -> list[str]:
         conversation=conversation,
         limit=(count + 1) * 4,
     )
-    inbound = [message.content for message in reversed(messages) if message.direction == "inbound"]
+    inbound = [
+        message.content
+        for message in reversed(messages)
+        if message.direction == "inbound"
+        and not wizard_message_helper.is_wizard_whatsapp_message(message.content)
+    ]
     return inbound[-count:]
 
 

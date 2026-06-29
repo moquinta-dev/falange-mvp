@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,13 +8,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.database import init_database
 from app.core.settings import get_settings
+from app.helpers.email_client import get_email_client
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_database()
+    if settings.app_env != "local" and settings.wizard_lead_notify_email:
+        if not get_email_client(settings).is_configured:
+            logger.warning(
+                "Alertas de wizard lead desativados: SMTP incompleto "
+                "(SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM). "
+                "Destino configurado: %s",
+                settings.wizard_lead_notify_email,
+            )
     yield
 
 

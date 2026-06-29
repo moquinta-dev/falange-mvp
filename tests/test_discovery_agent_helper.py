@@ -10,6 +10,7 @@ from app.helpers.discovery_agent_helper import (
     SUMMARY_HEADER,
     _respond,
 )
+from app.helpers import wizard_message_helper
 
 _ANSWERS = [
     "Tenho uma loja de roupas femininas",
@@ -95,3 +96,28 @@ def test_handoff_request_routes_to_human() -> None:
     assert response.state == "handoff"
     assert response.intent == "handoff"
     assert response.reply == HANDOFF_REPLY
+
+
+def test_wizard_name_personalizes_contact_question() -> None:
+    response = _respond(
+        "collecting_volume",
+        "40 atendimentos por dia",
+        wizard_name="Marcos",
+    )
+
+    assert response.state == "collecting_contact"
+    assert response.reply == wizard_message_helper.contact_question("Marcos")
+    assert "Marcos" in response.reply
+    assert "qual é o seu nome" not in response.reply
+
+
+def test_wizard_contact_summary_includes_name_with_schedule() -> None:
+    answers = _ANSWERS[:-1] + ["depois das 18h"]
+    response = _respond(
+        "collecting_contact",
+        "depois das 18h",
+        answers=answers,
+        wizard_name="Marcos",
+    )
+
+    assert "Marcos, depois das 18h" in (response.summary or "")

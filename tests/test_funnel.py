@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Generator
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -7,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base, get_db
+from app.helpers.email_client import EmailClient
 from app.main import app
 
 _BUSINESS_ANSWERS = [
@@ -162,6 +164,49 @@ def test_wizard_lead_is_recorded(client: httpx.AsyncClient) -> None:
 
         leads = (await client.get("/leads", params={"status": "new"})).json()
         assert any(lead["id"] == body["id"] for lead in leads)
+
+    asyncio.run(run())
+
+
+def test_wizard_lead_triggers_email_notification(client: httpx.AsyncClient) -> None:
+    sent: list[dict[str, str]] = []
+
+    class _FakeEmailClient(EmailClient):
+        @property
+        def is_configured(self) -> bool:
+            return True
+
+        def send(self, *, to: str, subject: str, body: str) -> None:
+            sent.append({"to": to, "subject": subject, "body": body})
+
+    async def run() -> None:
+        with patch("app.api.routes.funnel.get_email_client", return_value=_FakeEmailClient(
+            host="smtp.example.com",
+            port=465,
+            username="support@falangelabs.io",
+            password="secret",
+            sender="support@falangelabs.io",
+        )):
+            response = await client.post(
+                "/funnel/wizard-leads",
+                json={
+                    "session_id": "sess-wizard-email",
+                    "segment": "Clínica",
+                    "question": "Quanto custa a consulta?",
+                    "answer": "As consultas custam R$250.",
+                    "phone": "(71) 99999-0000",
+                    "name": "Marcos",
+                    "email": "marcos@example.com",
+                    "consent": True,
+                },
+            )
+
+        assert response.status_code == 201
+        assert len(sent) == 1
+        assert sent[0]["to"] == "support@falangelabs.io"
+        assert "[Novo lead wizard] Marcos" in sent[0]["subject"]
+        assert "Marcos" in sent[0]["body"]
+        assert "marcos@example.com" in sent[0]["body"]
 
     asyncio.run(run())
 
