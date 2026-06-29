@@ -30,7 +30,7 @@ from unicodedata import normalize
 
 from sqlalchemy.orm import Session
 
-from app.helpers import conversation_helper, lead_helper
+from app.helpers import conversation_helper, lead_helper, wizard_message_helper
 from app.models import Conversation
 
 COMPLETED_STATE = "completed"
@@ -192,10 +192,14 @@ def handle_message(
     if conversation.state == ABANDONED_STATE:
         conversation_helper.prepare_restart_after_abandon(db, conversation=conversation)
 
+    answers = dict(conversation.answers or {})
+    if conversation.current_node_id is None:
+        answers = wizard_message_helper.merge_wizard_metadata(answers, message)
+
     decision = _decide(
         workflow,
         current_node_id=conversation.current_node_id,
-        answers=dict(conversation.answers or {}),
+        answers=answers,
         message=message,
     )
 
@@ -332,7 +336,7 @@ def _advance_text(
 ) -> _Decision:
     if not message.strip():
         return _Decision(
-            reply=REASK_PREFIX + _render_prompt(node["prompt"], answers),
+            reply=REASK_PREFIX + _render_node(node, answers),
             current_node_id=current_node_id,
             answers=answers,
             state=current_node_id,
@@ -340,7 +344,13 @@ def _advance_text(
 
     collect = node.get("collect")
     if collect:
-        answers[collect] = message.strip()
+        value = message.strip()
+        if collect == "contact":
+            value = wizard_message_helper.normalize_contact_answer(
+                value,
+                answers.get("wizard_name"),
+            )
+        answers[collect] = value
     return _move_to(nodes, node["next"], answers)
 
 
@@ -417,7 +427,10 @@ def _render_prompt(prompt: str, answers: dict[str, Any]) -> str:
 def _render_node(node: dict[str, Any], answers: dict[str, Any]) -> str:
     if node.get("type") == "choice":
         return _render_choice(node, answers)
-    return _render_prompt(node["prompt"], answers)
+    prompt = node["prompt"]
+    if node.get("collect") == "contact":
+        prompt = wizard_message_helper.contact_question(answers.get("wizard_name"))
+    return _render_prompt(prompt, answers)
 
 
 def _render_choice(node: dict[str, Any], answers: dict[str, Any]) -> str:
@@ -447,6 +460,8 @@ def _match_option(message: str, options: list[dict[str, Any]]) -> dict[str, Any]
 def _build_summary(answers: dict[str, Any]) -> str:
     lines = [SUMMARY_HEADER, ""]
     for key, value in answers.items():
+        if key.startswith("wizard_"):
+            continue
         lines.append(f"- {_humanize(key)}: {value}")
     return "\n".join(lines)
 

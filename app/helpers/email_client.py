@@ -38,7 +38,12 @@ class EmailClient:
 
     @property
     def is_configured(self) -> bool:
-        return bool(self._host and self._sender)
+        return bool(
+            self._host.strip()
+            and self._username.strip()
+            and self._password
+            and (self._sender.strip() or self._username.strip())
+        )
 
     def send(self, *, to: str, subject: str, body: str) -> None:
         if not self.is_configured:
