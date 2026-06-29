@@ -1,14 +1,24 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin_api_key
 from app.core.database import get_db
 from app.helpers import metrics_helper
-from app.models import LandingEvent
+from app.models import LandingEvent, Lead
 from app.schemas.landing_event import LandingEventCreate, LandingEventResponse
 from app.schemas.metrics import FunnelMetricsResponse
+from app.schemas.wizard_lead import WizardLeadCreate, WizardLeadResponse
 
 router = APIRouter(prefix="/funnel", tags=["funnel"])
+
+
+def _normalize_phone(phone: str) -> str:
+    digits = "".join(character for character in phone if character.isdigit())
+    if digits.startswith("55"):
+        return f"+{digits}"
+    if len(digits) in (10, 11):
+        return f"+55{digits}"
+    return phone.strip()
 
 
 @router.post(
@@ -21,7 +31,7 @@ async def record_landing_event(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """Registra o topo do funil: visitas e cliques no WhatsApp na landing page."""
+    """Registra o topo do funil: visitas e cliques na landing page."""
 
     event = LandingEvent(
         **payload.model_dump(),
@@ -31,6 +41,49 @@ async def record_landing_event(
     db.commit()
     db.refresh(event)
     return event
+
+
+@router.post(
+    "/wizard-leads",
+    response_model=WizardLeadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_wizard_lead(
+    payload: WizardLeadCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Captura lead qualificado após conclusão do wizard da landing page."""
+
+    if payload.website:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid submission")
+
+    normalized_phone = _normalize_phone(payload.phone)
+    lead = Lead(
+        phone=normalized_phone,
+        name=payload.name,
+        business=payload.segment,
+        pain=payload.question,
+        goal=payload.answer,
+        contact=payload.email,
+        channels="whatsapp",
+        source="wizard",
+        status="new",
+    )
+    db.add(lead)
+    db.flush()
+
+    db.add(
+        LandingEvent(
+            event_type="wizard_lead_captured",
+            session_id=payload.session_id,
+            path="/criar-agente",
+            user_agent=request.headers.get("user-agent"),
+        )
+    )
+    db.commit()
+    db.refresh(lead)
+    return lead
 
 
 @router.get(
