@@ -135,6 +135,55 @@ def test_landing_event_is_recorded(client: httpx.AsyncClient) -> None:
     asyncio.run(run())
 
 
+def test_wizard_lead_is_recorded(client: httpx.AsyncClient) -> None:
+    async def run() -> None:
+        response = await client.post(
+            "/funnel/wizard-leads",
+            json={
+                "session_id": "sess-wizard-1",
+                "segment": "Clínica",
+                "question": "Quanto custa a consulta?",
+                "answer": "As consultas custam R$250. Atendemos de segunda a sexta.",
+                "phone": "(71) 99999-0000",
+                "name": "Ana",
+                "email": "ana@example.com",
+                "consent": True,
+            },
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["source"] == "wizard"
+        assert body["business"] == "Clínica"
+        assert body["pain"] == "Quanto custa a consulta?"
+        assert body["phone"] == "+5571999990000"
+        assert body["name"] == "Ana"
+        assert body["contact"] == "ana@example.com"
+
+        leads = (await client.get("/leads", params={"status": "new"})).json()
+        assert any(lead["id"] == body["id"] for lead in leads)
+
+    asyncio.run(run())
+
+
+def test_wizard_lead_rejects_missing_consent(client: httpx.AsyncClient) -> None:
+    async def run() -> None:
+        response = await client.post(
+            "/funnel/wizard-leads",
+            json={
+                "segment": "Clínica",
+                "question": "Quanto custa a consulta?",
+                "answer": "R$250",
+                "phone": "71999990000",
+                "consent": False,
+            },
+        )
+
+        assert response.status_code == 422
+
+    asyncio.run(run())
+
+
 def test_lead_status_update_supports_followup(client: httpx.AsyncClient) -> None:
     async def run() -> None:
         created = await client.post(
