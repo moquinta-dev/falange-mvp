@@ -10,8 +10,8 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# Topo do funil: visitas e cliques no WhatsApp na landing page.
-LANDING_EVENT_TYPES = ("page_view", "whatsapp_click")
+# Topo do funil: visitas, cliques e conclusões do wizard na landing page.
+LANDING_EVENT_TYPES = ("page_view", "whatsapp_click", "wizard_lead_captured")
 
 
 class LandingEvent(Base):
